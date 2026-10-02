@@ -1,0 +1,155 @@
+[
+  {
+    "id": "p-cap-real-call",
+    "title": "真实能力被加载并真正执行（不经测试替身）",
+    "spec": "03-semantics.md 第 4.1、4.4 节",
+    "program": [
+      "add #root window #win",
+      "data #res = {} of {text: str = \"\", length: int = 0}",
+      "call echo_upper with {text: \"hi\"} into #res"
+    ],
+    "capabilityModules": ["fixtures/capabilities_basic.py"],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "expect": {
+          "slots": { "#res": { "status": "done", "value": { "text": "HI", "length": 2 } } }
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-cap-real-timeout",
+    "title": "真实能力超时必须可见（SLOT_TIMEOUT），不得静默挂死",
+    "spec": "03-semantics.md 第 4.2 节",
+    "program": [
+      "add #root window #win",
+      "data #res = {} of {text: str = \"\"}",
+      "call stall with {seconds: 2} into #res"
+    ],
+    "capabilityModules": ["fixtures/capabilities_basic.py"],
+    "limits": { "callTimeoutMs": 200 },
+    "steps": [
+      {
+        "expect": {
+          "diagnostics": [{ "code": "SLOT_TIMEOUT", "level": "error" }],
+          "slots": { "#res": { "status": "timeout" } }
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-cap-real-cancel",
+    "title": "真实能力进行中被新调用取消，必须可见（SLOT_CANCELLED）",
+    "spec": "03-semantics.md 第 4.2、4.3 节",
+    "program": [
+      "add #root window #win",
+      "data #res = {} of {text: str = \"\", length: int = 0}"
+    ],
+    "capabilityModules": ["fixtures/capabilities_basic.py"],
+    "steps": [
+      { "send": ["call stall with {seconds: 2} into #res"] },
+      {
+        "send": ["call echo_upper with {text: \"x\"} into #res"],
+        "expect": {
+          "diagnostics": [{ "code": "SLOT_CANCELLED", "level": "info" }],
+          "slots": { "#res": { "status": "done" } }
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-cap-no-doc",
+    "title": "能力缺说明文本必须报错且不注册",
+    "spec": "03-semantics.md 第 4.1、4.5 节；06-diagnostics.md 第 4.5 节",
+    "program": [
+      "add #root window #win",
+      "data #res = {} of {text: str = \"\"}",
+      "call silent with {x: \"a\"} into #res"
+    ],
+    "capabilityModules": ["fixtures/capabilities_no_doc.py"],
+    "loadExpect": {
+      "diagnostics": [
+        { "code": "CAP_NO_DOC", "level": "error" },
+        { "code": "CALL_UNKNOWN", "level": "error" }
+      ]
+    },
+    "steps": [
+      { "expect": { "slots": { "#res": { "status": "error" } } } }
+    ]
+  },
+  {
+    "id": "p-cap-deps-mismatch",
+    "title": "依赖声明与实际 import 不一致必须报警",
+    "spec": "03-semantics.md 第 4.5 节；06-diagnostics.md 第 4.5 节",
+    "program": [
+      "add #root window #win"
+    ],
+    "capabilityModules": ["fixtures/capabilities_deps_mismatch.py"],
+    "loadExpect": {
+      "diagnostics": [{ "code": "CAP_DEPS_MISMATCH", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#win"] } }
+    ]
+  },
+  {
+    "id": "p-cap-result-not-serializable",
+    "title": "真实能力返回值不可序列化必须失败（不得静默成功）",
+    "spec": "03-semantics.md 第 4.1 节；06-diagnostics.md 第 4.5 节",
+    "program": [
+      "add #root window #win",
+      "data #res = {} of {text: str = \"\"}",
+      "call opaque with {x: 1} into #res"
+    ],
+    "capabilityModules": ["fixtures/capabilities_bad_result.py"],
+    "steps": [
+      {
+        "expect": {
+          "diagnostics": [{ "code": "CALL_RESULT", "level": "error" }],
+          "slots": { "#res": { "status": "error" } }
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-cap-contract-extra-arg",
+    "title": "多余参数必须报错（不得静默丢弃）",
+    "spec": "03-semantics.md 第 4.1 节；06-diagnostics.md 第 4.5 节",
+    "program": [
+      "add #root window #win",
+      "data #res = {} of {value: int = 0}",
+      "call twice with {a: 1, b: 2} into #res"
+    ],
+    "capabilities": [
+      { "name": "twice", "params": [{ "name": "a", "type": "int", "required": true }],
+        "returns": "int", "behavior": "return", "value": 2 }
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "CALL_CONTRACT", "level": "error" }]
+    },
+    "steps": [
+      { "expect": { "slots": { "#res": { "status": "error" } } } }
+    ]
+  },
+  {
+    "id": "p-cap-contract-type",
+    "title": "参数类型不符必须报错（不得静默猜测）",
+    "spec": "03-semantics.md 第 4.1 节；04-vocabulary.md 第 1 节",
+    "program": [
+      "add #root window #win",
+      "data #res = {} of {value: int = 0}",
+      "call twice with {a: \"x\"} into #res"
+    ],
+    "capabilities": [
+      { "name": "twice", "params": [{ "name": "a", "type": "int", "required": true }],
+        "returns": "int", "behavior": "return", "value": 2 }
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "CALL_CONTRACT", "level": "error" }]
+    },
+    "steps": [
+      { "expect": { "slots": { "#res": { "status": "error" } } } }
+    ]
+  }
+]

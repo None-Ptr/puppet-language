@@ -1,0 +1,36 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  # 语言层：规范 + 参考实现 + 无渲染器适配器。零第三方依赖，任何 Python ≥3.10 即可。
+  conformance:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: 校验用例文件本身
+        run: python conformance/runner.py --check
+      - name: 合规用例（无渲染器适配器）
+        run: python conformance/runner.py --impl-module puppet.adapter
+      - name: 真实示例零诊断
+        run: python -m puppet.cli validate examples --strict
+
+  # 渲染层：Tk 参考渲染器走真实布局与真实部件事件，需要显示器 → xvfb。
+  conformance-tk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: 安装 Tcl/Tk
+        run: sudo apt-get update && sudo apt-get install -y tk
+      - name: 合规用例（Tk 渲染器，真实几何与交互）
+        run: xvfb-run -a python conformance/runner.py --impl-module puppet.tk_adapter

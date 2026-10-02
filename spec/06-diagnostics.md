@@ -84,6 +84,9 @@
 | `CALL_CONTRACT` | 错误 | 参数缺失 / 多余 / 类型不符 |
 | `CALL_UNKNOWN` | 错误 | 目标函数不存在 |
 | `CALL_RESULT` | 错误 | 返回值不可序列化或不符合声明结构 |
+| `CAP_NO_DOC` | 错误 | 能力的说明文本（docstring）为空——**不予注册** |
+| `CAP_DEPS_MISMATCH` | 警告 | 能力模块的依赖声明与实际 import 不一致（不迁移、不缺包） |
+| `CAP_IMPORT` | 错误 | 能力模块加载失败（文件缺失或导入抛错） |
 | `SLOT_TIMEOUT` | 错误 | 调用超时（观察为超时态） |
 | `SLOT_STALE_DROPPED` | 信息 | 旧序号的调用结果到达后被丢弃 |
 | `SLOT_CANCELLED` | 信息 | 进行中的调用被新调用取消 |
@@ -101,7 +104,7 @@
 | 码 | 级别 | 触发 |
 |---|---|---|
 | `OBSERVATION_DROPPED` | 警告 | 观察流发生事件丢失（必须带丢失区间） |
-| `DEGRADED_FEATURE` | 信息 | 渲染器不支持某**能力声明之外**的控件 / 属性 / 动效 / 图标 / 几何 / 截图，已明确降级。**必须**带 `feature` 字段（机读）：`geometry` / `snapshot` / `control:<类型>` / `attr:<名>` / `animation:<名>` / `icon:<名>` |
+| `DEGRADED_FEATURE` | 信息 | 渲染器不支持某**能力声明之外**的控件 / 属性 / 动效 / 图标 / 几何 / 截图 / 用户动作投递，已明确降级。**必须**带 `feature` 字段（机读）：`geometry` / `snapshot` / `interaction` / `control:<类型>` / `attr:<名>` / `animation:<名>` / `icon:<名>` |
 | `PROBE_NO_CONSUMER` | 警告 | 探针动词在无驱动者连接时被使用。**由宿主发出**——只有宿主知道有没有消费者 |
 
 **`DEGRADED_FEATURE` 与能力声明的闭环（声明即 oracle）**：能力声明（`05-render-contract.md`

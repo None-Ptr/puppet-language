@@ -162,5 +162,59 @@
         }
       }
     ]
+  },
+  {
+    "id": "ir-click-via-renderer",
+    "title": "点击经渲染器投递为 click 事件并触发处理器（可观察触发条件）",
+    "spec": "05-render-contract.md 第 4 节",
+    "requires": ["interaction"],
+    "program": [
+      "add #root window #win",
+      "add #win text #t text=\"\"",
+      "add #win button #b text=\"点我\"",
+      "on #b click: set #t text=\"clicked\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "interact": { "target": "#b", "action": "click" },
+        "expect": { "attrs": { "#t.text": "clicked" } }
+      }
+    ]
+  },
+  {
+    "id": "ir-change-writeback-via-renderer",
+    "title": "勾选经渲染器投递为 change，受控处理器回写数据源",
+    "spec": "05-render-contract.md 第 4 节；03-semantics.md 第 2.8 节",
+    "requires": ["interaction"],
+    "program": [
+      "add #root window #win",
+      "data #n = [{v: false}] of {v: bool = false}",
+      "add #win checkbox #c value=#n.v",
+      "on #c change as e: update_where #n as r set v=e.value where r.v == false"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "interact": { "target": "#c", "action": "change", "value": true },
+        "expect": { "data": { "#n": [{ "v": true }] } }
+      }
+    ]
+  },
+  {
+    "id": "ir-no-renderer-degrades",
+    "title": "没有渲染层时用户动作必须可见降级（禁止假装送达）",
+    "spec": "05-render-contract.md 第 4 节；06-diagnostics.md 第 4.7 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "on #b click: set #b text=\"hit\""
+    ],
+    "steps": [
+      {
+        "interact": { "target": "#b", "action": "click" },
+        "expect": { "degraded": ["interaction"] }
+      }
+    ]
   }
 ]

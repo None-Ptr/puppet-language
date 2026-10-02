@@ -51,10 +51,11 @@ python conformance/runner.py --impl "..." --filter b-cycle
 | 请求 | 字段 | 期望响应 |
 |---|---|---|
 | `hello` | — | `{"protocol": "...", "rendering": {…}}`（见 4.1.1） |
-| `load` | `program`（字符串数组）、`capabilities`（数组，可选）、`limits`（对象，可选）、`seedState`（对象，可选）、`renderGeometry`（对象，可选） | `{"diagnostics": [...]}` |
+| `load` | `program`（字符串数组）、`capabilities`（数组，可选）、`capabilityModules`（字符串数组，可选）、`limits`（对象，可选）、`seedState`（对象，可选）、`renderGeometry`（对象，可选） | `{"diagnostics": [...]}` |
 | `send` | `batch`（字符串数组） | `{"diagnostics": [...]}` |
 | `fire` | `target`（地址）、`event`（事件名）、`row`（行序号，可选）、`value`（新值，可选） | `{"diagnostics": [...]}` |
 | `observe` | — | 见 4.3 |
+| `interact` | `target`（地址）、`action`（`click`/`change`/`submit`/`focus`/`blur`）、`value`（新值，可选） | `{"delivered": 布尔, "diagnostics": [...]}` |
 | `snapshot` | — | `{"image": <base64 或 null>, "format": "png"}`（见 4.1.3） |
 | `restart` | — | `{"diagnostics": [...]}` |
 | `quit` | — | 进程退出 |
@@ -62,6 +63,11 @@ python conformance/runner.py --impl "..." --filter b-cycle
 - `capabilities` 描述**测试替身**（实现按描述注册假能力，不得调用真实业务）：`{"name", "params":[{"name","type","required"}], "returns", "behavior"}`。`behavior` 取值：`return`（附 `value`）、`error`、`hang`（永不返回）、`nonjson`（返回不可序列化的值）、`delay`（附 `delayMs`）。
 - `limits`：`{"callTimeoutMs": <整数>, "eventQueue": <整数>}`。后者限定观察流缓冲上限，用于验证"溢出不得静默丢弃"。
 - `seedState`：预置的状态文件内容，形状与实现写出的状态一致：`{"revision": <整数>, "items": {"#数据源地址": [行, …]}}`。实现应**先**把它当作既有状态，再执行 `load`（用于持久化漂移类用例）。
+- `capabilityModules` 描述**真实能力模块**（`.py` 文件路径，相对路径按 `conformance/` 解析）。
+  实现必须从签名与类型注解提取契约，并履行三条义务：说明文本为空 → 错误 `CAP_NO_DOC`
+  且**不予注册**；依赖声明与实际 import 不一致 → 警告 `CAP_DEPS_MISMATCH`；模块加载失败 →
+  错误 `CAP_IMPORT`。真实能力与替身走**同一份契约形状**，因此行为用例对二者同样适用
+  （`conformance/fixtures/` 内置四个测试用模块）。
 - `restart`：模拟进程重启——内存状态丢弃，持久分区从状态文件恢复。
 - `fire.row`：**派发行内事件时必须给出**。行内事件的绑定名只能由"第几行"确定（规范 01 第 8.1 节）；省略 `row` 而目标又在模板内，属于驱动者的错误用法。
 - `fire.value`：**`change` 事件必须给出**——它是"用户改成了什么"。事件载荷 `{value: …}` 由此而来（规范 03 第 2.8 节）；不给，处理器就无从知道新值。
@@ -124,6 +130,16 @@ python conformance/runner.py --impl "..." --filter b-cycle
   `DEGRADED_FEATURE(feature=snapshot)`。
 - 用例以 `expect.degraded: ["snapshot"]` 表达"若不支持就必须可见降级"（见第 5 节）。
 
+### 4.1.4 用户动作投递（`interact`）
+
+- `fire`（4.1）**直接派发进引擎**——它验证语义，**不验证渲染器**。`interact` 才是"用户动作"：
+  实现**必须**把它投递给**真实部件**，由渲染器自己的事件绑定翻译成引擎事件
+  （用户动作 → 部件事件 → 渲染器 → `fire` → 处理器）。规范 05 第 4 节要求这条路径可观察。
+- 投递不了（如没有渲染层）**必须**返回 `{"delivered": false}` **并**产生
+  `DEGRADED_FEATURE(feature=interaction)`；**禁止**假装送达。
+- 用例用 `requires: ["interaction"]` 表达"这条用例要求实现能投递用户动作"；实现未声明该能力时
+  运行器**可见跳过**（打印 `skip`），**不是**静默通过。
+
 ### 4.2 诊断
 
 每条诊断是一个对象，**必须**含 `code` 与 `level`（`error` / `warning` / `info`），**应该**含 `line`、`message`。
@@ -185,8 +201,11 @@ python conformance/runner.py --impl "..." --filter b-cycle
 | `loadExpect` | 否 | 装载后的期望 |
 | `steps` | 是 | 至少一步；每步**必须**含 `send` / `fire` / `restart` / `snapshot` / `expect` 之一 |
 | `capabilities` / `limits` / `seedState` / `renderGeometry` | 否 | 见第 4 节 |
+| `capabilityModules` | 否 | 真实能力模块（`.py` 路径，相对 `conformance/`）；见第 4.1 节 |
+| `rendering` | 否 | 能力声明**替身**，覆盖实现自身的声明（见 4.1.2） |
+| `requires` | 否 | 本用例要求的能力（如 `["interaction"]`）；实现未声明时**可见跳过** |
 
-**期望对象**（`loadExpect` 与每步的 `expect` 同构）：
+**期望对象**（`loadExpect` 与每步的 `expect` 同构）。运行器**只在用例声明了 `loadExpect` 时**才在装载后额外观察一次——没人监听时不消费观察流，否则装载后立刻完成的异步诊断会被吸进装载期，步骤断言就看不到它了：（`loadExpect` 与每步的 `expect` 同构）：
 
 | 键 | 语义 |
 |---|---|
@@ -213,6 +232,7 @@ python conformance/runner.py --impl "..." --filter b-cycle
 | `geometry: false` | `relations` | 退化为**诚实性检查**：运行器先发一次 `where` 探针，要求出现 `DEGRADED_FEATURE(feature=geometry)`；**静默即 FAIL** |
 | 未声明支持 `<特性>` | `degraded: ["<特性>"]` | 要求出现对应的 `DEGRADED_FEATURE(feature=…)` |
 | 已声明支持 `<特性>` | `degraded: ["<特性>"]` | **不**要求降级（谎报"支持"由行为用例抓出） |
+| `interaction: false` | `requires: ["interaction"]` | **可见跳过**（打印 `skip`），不是静默通过 |
 
 两条配套规则，缺一不可：
 
@@ -243,7 +263,9 @@ python conformance/runner.py --impl "..." --filter b-cycle
 以及**渲染的可观察行为**——几何关系（无真实渲染器时经 `renderGeometry` 替身确定性验证；
 有真实渲染器时直接走上真实布局）、能力声明 oracle、词汇 / 几何 / 截图的可见降级
 （`cases/render.json`）、观察流溢出标记（`p-observation-dropped`，靠 `limits.eventQueue`
-把时序问题转化为确定性的批量溢出）、`tabs` 的页结构与 `selected` 语义（`cases/tabs.json`）。
+把时序问题转化为确定性的批量溢出）、**真实能力层**（加载 / docstring 强制 / 依赖声明核对 /
+超时 / 取消 / 返回值与参数契约，见 `cases/capabilities.json`）、`tabs` 的页结构与 `selected`
+语义（`cases/tabs.json`）、经渲染器的用户动作投递（`cases/interaction.json` 的 `ir-*`）。
 
 **不覆盖**：像素级视觉呈现（字体度量、抗锯齿、阴影质量、动效曲线的精确形状）。这些属实现自由
 （规范 05 第 9 节），同一实现在等价输入下一致即可；按规范纪律，本套件**不**对像素做黄金图像比对。

@@ -27,9 +27,10 @@ def describe_rendering() -> dict:
         "icons": sorted(vocab.CORE_ICONS),
         "geometry": False,
         "snapshot": False,
+        "interaction": False,
         "headless": True,
-        "notes": "参考语义引擎：无渲染器；几何与截图均按规范可见降级。"
-                 "conformance 可用 load.renderGeometry 注入几何测试替身。",
+        "notes": "参考语义引擎：无渲染器；几何、截图与用户动作投递均按规范可见降级。"
+                 "conformance 可用 load.renderGeometry / load.rendering 注入测试替身。",
     }
 
 
@@ -45,6 +46,7 @@ def handle(engine: Engine, request: dict) -> dict:
             seed_state=request.get("seedState"),
             render_geometry=request.get("renderGeometry"),
             rendering=request.get("rendering"),
+            capability_modules=request.get("capabilityModules"),
         )
         return {"diagnostics": [d.to_dict() for d in diags]}
     if op == "send":
@@ -59,6 +61,10 @@ def handle(engine: Engine, request: dict) -> dict:
         return {"diagnostics": [d.to_dict() for d in diags]}
     if op == "observe":
         return engine.observe()
+    if op == "interact":
+        return engine.deliver_interaction(request.get("target", ""),
+                                          request.get("action", ""),
+                                          request.get("value"))
     if op == "snapshot":
         return engine.snapshot()
     if op == "quit":

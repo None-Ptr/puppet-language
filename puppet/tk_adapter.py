@@ -18,6 +18,7 @@ import json
 import sys
 
 from . import adapter as base
+from .diag import ERROR, INFO, Diagnostic
 from .engine import Engine
 from .lang import Lit
 
@@ -37,9 +38,11 @@ RENDERING = {
     "icons": [],
     "geometry": True,
     "snapshot": False,
+    "interaction": True,
     "headless": False,
     "notes": "Tk 参考渲染器：容器与窗口的 w/h 按像素实现；文本类控件按内容自尺寸；"
-             "图标不做位图（一律降级）；未声明的词汇一律可见降级。",
+             "图标不做位图（一律降级）；未声明的词汇一律可见降级；"
+             "用户动作经真实 Tk 事件投递为引擎事件。",
 }
 
 _CONTAINERS = ("window", "col", "row")
@@ -56,6 +59,8 @@ class TkRenderer:
         self.root = tk.Tk()
         self.root.withdraw()
         self.widgets: dict = {}
+        self.vars: dict = {}
+        self.values: dict = {}
         self.origin = None
         # 能力声明替身可关掉几何（双向"按声明行事"）。
         self.geometry_on = True
@@ -83,6 +88,8 @@ class TkRenderer:
                 pass
         self.widgets = {}
         self.origin = None
+        # 求值后的属性：渲染器必须反映**绑定值**，而不是源码里的字面量
+        self.values = self.engine._observe_attrs()
         program = self.engine.program
         root = program.nodes.get("root")
         if root is None:
@@ -111,6 +118,7 @@ class TkRenderer:
             widget = self._make(typ, node, parent)
             self._style(node, widget)
         self.widgets[node.id] = widget
+        self._bind_events(node, widget)
         for cid in node.children:
             child = self.engine.program.nodes.get(cid)
             if child is None or child.type == "template":
@@ -121,14 +129,21 @@ class TkRenderer:
         return widget
 
     def _make(self, typ, node, parent):
-        text = self._static(node, "text")
+        key = "#" + node.id
+        text = self.values.get(key + ".text")
+        if text is None:
+            text = self._static(node, "text")
         label = str(text) if text is not None else ""
         if typ == "text":
             return tk.Label(parent, text=label)
         if typ == "button":
             return tk.Button(parent, text=label)
         if typ == "input":
-            return tk.Entry(parent)
+            entry = tk.Entry(parent)
+            value = self.values.get(key + ".value")
+            if value not in (None, ""):
+                entry.insert(0, str(value))
+            return entry
         if typ == "checkbox":
             return tk.Checkbutton(parent, text=label)
         if typ == "divider":
@@ -139,6 +154,87 @@ class TkRenderer:
         # 可见降级由引擎按声明发 DEGRADED_FEATURE；子树继续参与布局，
         # 禁止"渲染成空白后丢弃子树"。
         return tk.Frame(parent)
+
+    def _bind_events(self, node, widget):
+        """把 Tk 事件翻译成引擎事件——这正是规范 05 第 4 节要求的**渲染器职责**。
+
+        用户动作 → Tk 事件 → 本绑定 → `engine.fire` → 处理器。缺这一步，交互就只是
+        "引擎内部调用"，规范要求的可观察触发条件就无人守护。
+        """
+        nid = node.id
+        if node.type == "button":
+            widget.bind("<Button-1>", lambda _e, n=nid: self._fire(n, "click"))
+        elif node.type == "checkbox":
+            var = tk.BooleanVar(master=widget,
+                                value=bool(self.values.get("#" + nid + ".value")))
+            widget.configure(variable=var)
+            self.vars[nid] = var
+            widget.configure(
+                command=lambda n=nid: self._fire(n, "change", self.vars[n].get()))
+        elif node.type == "input":
+            widget.bind("<Return>",
+                        lambda _e, n=nid: self._fire(n, "submit", self._entry_text(widget)))
+            widget.bind("<<Modified>>",
+                        lambda _e, n=nid: self._fire(n, "change", self._entry_text(widget)))
+            widget.bind("<FocusIn>", lambda _e, n=nid: self._fire(n, "focus"))
+            widget.bind("<FocusOut>", lambda _e, n=nid: self._fire(n, "blur"))
+
+    def _fire(self, nid, event, value=None):
+        """渲染器把事件交给引擎；诊断进观察流，与用户操作同一条路。"""
+        self.engine.queue(self.engine.fire(nid, event, None, value))
+
+    @staticmethod
+    def _entry_text(widget):
+        try:
+            return widget.get()
+        except tk.TclError:
+            return ""
+
+    def deliver(self, target, action, value=None):
+        """把一次"用户动作"投递给**真实部件**（而不是直接调引擎）。
+
+        返回 `{"delivered": bool, "diagnostics": [...]}`；投递不了就必须可见降级。
+        """
+        nid = (target or "").lstrip("#")
+        widget = self.widgets.get(nid)
+        if widget is None or nid not in self.engine.program.nodes:
+            return {"delivered": False, "diagnostics": [Diagnostic(
+                "TARGET_MISSING", ERROR,
+                "节点 #%s 不存在或不可见" % nid).to_dict()]}
+        try:
+            if action == "click":
+                x = max(widget.winfo_width() // 2, 1)
+                y = max(widget.winfo_height() // 2, 1)
+                widget.event_generate("<Button-1>", x=x, y=y)
+                widget.event_generate("<ButtonRelease-1>", x=x, y=y)
+            elif action == "submit":
+                widget.event_generate("<Return>")
+            elif action == "change":
+                var = self.vars.get(nid)
+                if var is not None:                      # 勾选类：需要时翻转并触发 command
+                    # `invoke()` 自身会翻转，故只在**当前值与目标不同**时才调；
+                    # 先 `set` 再 `invoke` 会翻回去——送出的值又变回原值。
+                    if bool(var.get()) != bool(value):
+                        widget.invoke()
+                else:                                    # 输入类：改文本并送一次修改事件
+                    widget.delete(0, "end")
+                    if value not in (None, ""):
+                        widget.insert(0, str(value))
+                    widget.event_generate("<<Modified>>")
+            elif action in ("focus", "blur"):
+                widget.focus_set()
+                widget.event_generate("<FocusIn>" if action == "focus" else "<FocusOut>")
+            else:
+                return {"delivered": False, "diagnostics": [Diagnostic(
+                    "DEGRADED_FEATURE", INFO,
+                    "本渲染器不支持交互动作 %s" % action,
+                    feature="interaction").to_dict()]}
+        except tk.TclError as ex:
+            return {"delivered": False, "diagnostics": [Diagnostic(
+                "DEGRADED_FEATURE", INFO, "交互投递失败：%s" % ex,
+                feature="interaction").to_dict()]}
+        self.root.update()
+        return {"delivered": True}
 
     def _style(self, node, widget):
         color = self._static(node, "bgcolor")
@@ -221,9 +317,12 @@ class TkRenderer:
         return expr.value if isinstance(expr, Lit) else None
 
 
-def handle(engine: Engine, request: dict) -> dict:
+def handle(engine: Engine, renderer, request: dict) -> dict:
     if request.get("op") == "hello":
         return {"protocol": "1", "rendering": RENDERING}
+    if request.get("op") == "interact":
+        return renderer.deliver(request.get("target", ""),
+                                request.get("action", ""), request.get("value"))
     return base.handle(engine, request)
 
 
@@ -261,7 +360,7 @@ def main() -> int:
         else:
             engine.render_geometry = renderer.measure() if renderer.geometry_on else {}
         try:
-            response = handle(engine, request)
+            response = handle(engine, renderer, request)
         except Exception as ex:  # noqa: BLE001 - 适配器绝不静默：错误原样回传
             response = {"error": "%s: %s" % (type(ex).__name__, ex)}
         base._emit(response)

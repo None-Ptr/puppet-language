@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import os
 import tempfile
@@ -12,6 +14,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from .capabilities import load_capability_module, type_matches
 from .diag import Diagnostic, ERROR, INFO, WARNING
 from .eval import CollectionRef, EvalError, evaluate
 from .ir import (ROOT, Program, ancestors_of, apply_stmt, in_template, new_program,
@@ -232,13 +235,19 @@ class Engine:
     # ------------------------------------------------------------ 装载与批次
 
     def load(self, lines, capabilities=None, limits=None, seed_state=None,
-             render_geometry=None, rendering=None) -> List[Diagnostic]:
+             render_geometry=None, rendering=None,
+             capability_modules=None) -> List[Diagnostic]:
         with self.lock:
             self.program = new_program()
             self.items = {}
             self.slots = {}
             self.flags = {}
             self.pending = []
+            # 装载 = 新的生命周期：观察缓冲必须清空，否则上一个程序的诊断/事件/
+            # 探针结果会漏进下一个程序（跨用例污染，且表现为"莫名"的失败）。
+            self.events = []
+            self.probes = []
+            self.subscriptions = set()
             self.render_geometry = dict(render_geometry or {})
             self.rendering = self._merge_rendering(rendering)
             self.capabilities = {c["name"]: c for c in (capabilities or [])}
@@ -254,6 +263,11 @@ class Engine:
             stored_items = (saved.get("items") or {}) if isinstance(saved, dict) else {}
 
             diags: List[Diagnostic] = []
+            # 真实能力模块：与替身同一份契约形状；同名以真实模块为准
+            for path in capability_modules or []:
+                contracts, cap_diags = load_capability_module(path)
+                diags += cap_diags
+                self.capabilities.update(contracts)
             stmts, pdiags = parse_program(list(lines))
             diags += pdiags
             # 动作与调用需要数据源已存在，故延后执行
@@ -726,6 +740,24 @@ class Engine:
                                     "缺少必需参数：%s" % ", ".join(str(m) for m in missing)))
             self._put_slot(into, "error", None, 0)
             return
+        known = {p.get("name") for p in cap.get("params", [])}
+        extra = [k for k in args if k not in known]
+        if extra:
+            diags.append(Diagnostic("CALL_CONTRACT", ERROR,
+                                    "多余参数：%s" % ", ".join(sorted(extra))))
+            self._put_slot(into, "error", None, 0)
+            return
+        bad = []
+        for p in cap.get("params", []):
+            if p.get("name") in args and not type_matches(p.get("type", "any"),
+                                                          args[p["name"]]):
+                bad.append("%s 期望 %s，实际 %s" % (p["name"], p.get("type"),
+                                                  type(args[p["name"]]).__name__))
+        if bad:
+            diags.append(Diagnostic("CALL_CONTRACT", ERROR,
+                                    "参数类型不符：%s" % "；".join(bad)))
+            self._put_slot(into, "error", None, 0)
+            return
         self._seq += 1
         seq = self._seq
         previous = self.slots.get(into)
@@ -775,7 +807,15 @@ class Engine:
 
         timer = threading.Timer(timeout, on_timeout)
         timer.start()
+        impl = cap.get("callable")
         try:
+            if impl is not None:
+                # **真实能力**：`async` 直接 await，同步函数在本线程里跑（已由线程池承载）
+                value = (asyncio.run(impl(**args))
+                         if inspect.iscoroutinefunction(impl) else impl(**args))
+                json.dumps(value)                 # 契约：必须可序列化
+                settle("done", value)
+                return
             if behavior == "hang":
                 timer.join()
                 return
@@ -955,6 +995,25 @@ class Engine:
                                    "截图不可用：参考语义引擎不含渲染器",
                                    feature="snapshot")])
             return {"image": None, "format": "png"}
+
+    def deliver_interaction(self, target: str, action: str, value=None) -> dict:
+        """把"用户动作"交给渲染层投递为事件（规范 05 第 4 节）。
+
+        默认实现**没有渲染层**：做不到就**必须可见降级**，禁止假装送达。
+        真正把用户动作转成事件的职责在渲染器（见 `puppet/tk_adapter.py`）。
+        """
+        with self.lock:
+            nid = (target or "").lstrip("#")
+            if nid not in self.program.nodes:
+                return {"delivered": False,
+                        "diagnostics": [Diagnostic(
+                            "TARGET_MISSING", ERROR,
+                            "节点 #%s 不存在" % nid).to_dict()]}
+            self.queue([Diagnostic(
+                "DEGRADED_FEATURE", INFO,
+                "本实现没有渲染层，用户动作无法投递为事件（action=%s）" % action,
+                feature="interaction")])
+            return {"delivered": False}
 
     def probe(self, verb: str, target: str = "") -> dict:
         with self.lock:

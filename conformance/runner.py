@@ -30,14 +30,16 @@ EXPECT_KEYS = {
 OBSERVE_KEYS = {"events", "probes", "nodes", "attrs", "data", "flags",
                 "slots", "rows", "geometry"}
 CASE_KEYS = {
-    "id", "title", "spec", "program", "steps",
+    "id", "title", "spec", "program", "steps", "requires",
     "loadExpect", "capabilities", "limits", "seedState", "renderGeometry",
-    "rendering",
+    "rendering", "capabilityModules",
 }
-STEP_KEYS = {"send", "fire", "restart", "snapshot", "expect"}
-STEP_ACTIONS = {"send", "fire", "restart", "snapshot", "expect"}
+STEP_KEYS = {"send", "fire", "interact", "restart", "snapshot", "expect"}
+STEP_ACTIONS = {"send", "fire", "interact", "restart", "snapshot", "expect"}
 BEHAVIORS = {"return", "error", "hang", "nonjson", "delay"}
 LEVELS = {"error", "warning", "info"}
+# `interact` 的动作集 = 规范 05 第 4 节的交互事件名
+INTERACTIONS = {"click", "change", "submit", "focus", "blur"}
 
 # 几何关系词汇（见 spec/05-render-contract.md 第 8 节）。全部为**定性/相对**断言：
 # 不比较绝对坐标，因而跨渲染器（字号 / DPI 不同）可比。
@@ -49,8 +51,8 @@ RELATIONS = {
     "gap_h", "gap_v", "width_ratio", "height_ratio",
 }
 RELATION_NEEDS_VALUE = {"gap_h", "gap_v", "width_ratio", "height_ratio"}
-# 观测/驱动能力（布尔）：geometry / snapshot / headless
-DEGRADED_OBS = {"geometry", "snapshot", "headless"}
+# 观测/驱动能力（布尔）：geometry / snapshot / interaction / headless
+DEGRADED_OBS = {"geometry", "snapshot", "interaction", "headless"}
 # 词汇能力（列表）：control:<类型> / attr:<名> / animation:<名> / icon:<名>
 DEGRADED_PREFIXES = ("control:", "attr:", "animation:", "icon:")
 DEFAULT_TOL = 1.0
@@ -194,6 +196,12 @@ def validate_case(case, where):
                     problems.append("%s: fire 必须含 target 与 event" % sw)
             if "restart" in step and not isinstance(step["restart"], bool):
                 problems.append("%s: restart 必须是布尔" % sw)
+            if "interact" in step:
+                act = step["interact"]
+                if not isinstance(act, dict) or "target" not in act or "action" not in act:
+                    problems.append("%s: interact 必须含 target 与 action" % sw)
+                elif act["action"] not in INTERACTIONS:
+                    problems.append("%s: interact.action 非法：%r" % (sw, act["action"]))
             if "snapshot" in step and not isinstance(step["snapshot"], bool):
                 problems.append("%s: snapshot 必须是布尔" % sw)
             if "expect" in step:
@@ -207,6 +215,12 @@ def validate_case(case, where):
         problems.append("%s: limits 必须是对象" % where)
     if "seedState" in case and not isinstance(case["seedState"], dict):
         problems.append("%s: seedState 必须是对象" % where)
+    for req in case.get("requires", []):
+        if not isinstance(req, str):
+            problems.append("%s: requires 的每项必须是字符串（能力名）" % where)
+    for path in case.get("capabilityModules", []):
+        if not isinstance(path, str):
+            problems.append("%s: capabilityModules 的每项必须是字符串路径" % where)
     if "rendering" in case:
         r = case["rendering"]
         if not isinstance(r, dict):
@@ -565,11 +579,18 @@ def run_case(case, impl, wait_seconds):
     for key in ("capabilities", "limits", "seedState", "renderGeometry", "rendering"):
         if key in case:
             req[key] = case[key]
+    if case.get("capabilityModules"):
+        # 相对路径按 conformance/ 解析（用例不写本机绝对路径）
+        req["capabilityModules"] = [
+            p if os.path.isabs(p) else os.path.join(HERE, p)
+            for p in case["capabilityModules"]]
     resp = impl.request(req)
     load_diags = list(resp.get("diagnostics", []))
-    snap = impl.request({"op": "observe"})
-    load_diags += snap.get("diagnostics", [])
+    # 只有用例真的要断言装载期诊断时才观察一次：**没人监听时不消费观察流**，
+    # 否则装载后立刻完成的异步诊断会被吸进装载期，步骤断言就看不到它了。
     if "loadExpect" in case:
+        snap = impl.request({"op": "observe"})
+        load_diags += snap.get("diagnostics", [])
         problems += check_expect(case["loadExpect"], load_diags, snap, "load",
                                  rendering, geometry_available)
 
@@ -581,6 +602,10 @@ def run_case(case, impl, wait_seconds):
         if "fire" in step:
             req = {"op": "fire"}
             req.update(step["fire"])
+            diags += impl.request(req).get("diagnostics", [])
+        if "interact" in step:
+            req = {"op": "interact"}
+            req.update(step["interact"])
             diags += impl.request(req).get("diagnostics", [])
         if step.get("restart"):
             diags = impl.request({"op": "restart"}).get("diagnostics", [])
@@ -649,8 +674,16 @@ def main(argv=None):
     selected = [(n, c) for n, c in cases if args.filter in c["id"]]
     impl = Impl(args.impl, cwd=os.path.dirname(HERE))
     failed = 0
+    skipped = 0
     try:
         for name, case in selected:
+            # 能力门槛：实现未声明的能力 → **可见跳过**（不是静默通过）
+            effective = case.get("rendering") or impl.rendering or {}
+            missing = [c for c in case.get("requires", []) if not _declared(effective, c)]
+            if missing:
+                skipped += 1
+                print("skip %s  (实现未声明：%s)" % (case["id"], ", ".join(missing)))
+                continue
             try:
                 issues = run_case(case, impl, args.wait)
             except Exception as ex:  # noqa: BLE001 - 单条用例失败不终止整轮
@@ -666,7 +699,8 @@ def main(argv=None):
     finally:
         impl.close()
 
-    print("\n%d/%d 通过" % (len(selected) - failed, len(selected)))
+    print("\n%d/%d 通过（跳过 %d）"
+          % (len(selected) - failed - skipped, len(selected), skipped))
     return 1 if failed else 0
 
 
