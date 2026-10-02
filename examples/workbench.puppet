@@ -1,0 +1,46 @@
+// 工作台 — 选项卡、多视图与列表增删改
+// 验收：puppet validate examples（零诊断）
+// 演示：tabs（切换本身即有渲染效果，不需要处理器）、行内事件的行上下文、
+//       受控控件的"绑定读 + 处理器回写"
+
+add #root window #win title="工作台" w=640 h=560 bgcolor=#ffffff primary=#2563eb
+add #win col #main pad=12 gap=10
+
+add #main navbar #bar title="工作台"
+
+add #main tabs #views selected=0
+add #views col #page_tasks gap=8
+add #views col #page_done gap=8
+
+add #page_tasks row #entry gap=8
+add #entry input #new placeholder="新任务…" flex=1
+add #entry button #add text="添加" icon=add
+add #page_tasks list #open source=#tasks template=#tpl_open
+add #page_tasks text #none text="没有未完成的任务" fg=#94a3b8 visible=false
+
+add #page_done list #closed source=#tasks template=#tpl_done
+add #page_done text #all_done text="全部完成" fg=#16a34a visible=false
+
+add #root template #tpl_open as t
+add #tpl_open row #row gap=8 pad=6
+add #tpl_open checkbox #done value=t.done
+add #tpl_open text #label text=t.text flex=1
+add #tpl_open button #remove text="删除" icon=delete fg=#dc2626
+
+add #root template #tpl_done as t
+add #tpl_done row #row_d gap=8 pad=6
+add #tpl_done checkbox #fin value=t.done
+add #tpl_done text #label_d text=t.text flex=1 fg=#94a3b8 italic=true
+
+data #tasks persist=true = [] of {text: str, done: bool = false}
+
+on #add click when #new.value != "":
+    append #tasks item={text: #new.value} ; set #new value=""
+on #remove click:
+    remove_where #tasks as r where r.text == t.text
+on #done change as e:
+    update_where #tasks as r set done=e.value where r.text == t.text
+on #fin change as e:
+    update_where #tasks as r set done=e.value where r.text == t.text
+on #tasks change:
+    set #none visible=count(#tasks) == 0

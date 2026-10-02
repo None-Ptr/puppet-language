@@ -1,0 +1,133 @@
+[
+  {
+    "id": "l-listen-click",
+    "title": "listen 把订阅的事件回推给驱动者，与有没有处理器无关",
+    "spec": "01-grammar.md 第 7.8 节；03-semantics.md 第 6 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "listen #b click",
+      "on #b click: set #b text=\"hit\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "fire": { "target": "#b", "event": "click" },
+        "expect": {
+          "events": [{ "target": "#b", "event": "click" }],
+          "attrs": { "#b.text": "hit" }
+        }
+      }
+    ]
+  },
+  {
+    "id": "l-listen-without-reaction",
+    "title": "只订阅不处理：事件照样回推，且不算未覆盖交互",
+    "spec": "01-grammar.md 第 7.8 节；04-vocabulary.md 第 5.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "listen #b click"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "fire": { "target": "#b", "event": "click" },
+        "expect": { "events": [{ "target": "#b", "event": "click" }] }
+      }
+    ]
+  },
+  {
+    "id": "l-listen-data-change",
+    "title": "订阅数据源变化：每次内容变化都回推一条事件",
+    "spec": "01-grammar.md 第 7.8 节",
+    "program": [
+      "add #root window #win",
+      "add #win text #n text=str(count(#todos))",
+      "data #todos = [] of {text: str = \"\"}",
+      "listen #todos change"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["append #todos item={text: \"a\"}"],
+        "expect": { "events": [{ "target": "#todos", "event": "change" }] }
+      },
+      {
+        "send": ["append #todos item={text: \"b\"}"],
+        "expect": { "events": [{ "target": "#todos", "event": "change" }] }
+      }
+    ]
+  },
+  {
+    "id": "l-listen-unsubscribed-not-pushed",
+    "title": "没被订阅的事件不进观察流",
+    "spec": "01-grammar.md 第 7.8 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "on #b click: set #b text=\"hit\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "fire": { "target": "#b", "event": "click" },
+        "expect": { "noEvents": true, "attrs": { "#b.text": "hit" } }
+      }
+    ]
+  },
+  {
+    "id": "l-listen-row-event",
+    "title": "行内订阅事件带行序号",
+    "spec": "01-grammar.md 第 7.8、8.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win list #items source=#todos template=#tpl",
+      "add #root template #tpl as t",
+      "add #tpl button #del text=\"删除\"",
+      "listen #del click",
+      "data #todos = [] of {text: str = \"\"}",
+      "on #del click: append #todos item={text: t.text}"
+    ],
+    "steps": [
+      {
+        "send": ["append #todos item={text: \"a\"}"],
+        "expect": { "noEvents": true }
+      },
+      {
+        "fire": { "target": "#del", "event": "click", "row": 0 },
+        "expect": { "events": [{ "target": "#del", "event": "click", "row": 0 }] }
+      }
+    ]
+  },
+  {
+    "id": "l-listen-unknown-event",
+    "title": "订阅未识别的事件名是警告",
+    "spec": "01-grammar.md 第 7.8 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "on #b click: set #b text=\"hit\"",
+      "listen #b hovered"
+    ],
+    "loadExpect": { "diagnostics": [{ "code": "UNKNOWN_EVENT", "level": "warning" }] },
+    "steps": [
+      { "expect": { "nodes": ["#b"] } }
+    ]
+  },
+  {
+    "id": "l-listen-missing-target",
+    "title": "订阅不存在的目标是错误",
+    "spec": "01-grammar.md 第 7.8 节",
+    "program": [
+      "add #root window #win",
+      "listen #ghost click"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "TARGET_MISSING", "level": "error" }]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root"] } }
+    ]
+  }
+]

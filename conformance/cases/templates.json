@@ -1,0 +1,143 @@
+[
+  {
+    "id": "t-row-event-binding",
+    "title": "行内事件携带行上下文：绑定名指向被点中的那一行",
+    "spec": "01-grammar.md 第 8.1 节；03-semantics.md 第 3.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main list #items source=#todos template=#tpl",
+      "add #main text #last text=\"\"",
+      "add #root template #tpl as t",
+      "add #tpl button #del text=\"删除\"",
+      "data #todos = [] of {text: str = \"\"}",
+      "on #del click: set #last text=t.text"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": [
+          "append #todos item={text: \"a\"}",
+          "append #todos item={text: \"b\"}"
+        ],
+        "expect": { "attrs": { "#last.text": "" } }
+      },
+      {
+        "fire": { "target": "#del", "event": "click", "row": 1 },
+        "expect": { "attrs": { "#last.text": "b" } }
+      },
+      {
+        "fire": { "target": "#del", "event": "click", "row": 0 },
+        "expect": { "attrs": { "#last.text": "a" } }
+      }
+    ]
+  },
+  {
+    "id": "t-row-context-required",
+    "title": "行内事件不给行序号是错误，不得静默按无绑定派发",
+    "spec": "01-grammar.md 第 8.1 节；06-diagnostics.md 第 4.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main list #items source=#todos template=#tpl",
+      "add #root template #tpl as t",
+      "add #tpl button #del text=\"删除\"",
+      "data #todos = [] of {text: str = \"\"}",
+      "on #del click: append #todos item={text: t.text}"
+    ],
+    "steps": [
+      {
+        "send": ["append #todos item={text: \"a\"}"],
+        "expect": { "diagnostics": [] }
+      },
+      {
+        "fire": { "target": "#del", "event": "click" },
+        "expect": { "diagnostics": [{ "code": "ROW_CONTEXT", "level": "error" }] }
+      }
+    ]
+  },
+  {
+    "id": "t-row-out-of-range",
+    "title": "行序号越界是错误",
+    "spec": "01-grammar.md 第 8.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main list #items source=#todos template=#tpl",
+      "add #root template #tpl as t",
+      "add #tpl button #del text=\"删除\"",
+      "add #main text #last text=\"\"",
+      "data #todos = [] of {text: str = \"\"}",
+      "on #del click: set #last text=t.text"
+    ],
+    "steps": [
+      {
+        "send": ["append #todos item={text: \"a\"}"],
+        "expect": {}
+      },
+      {
+        "fire": { "target": "#del", "event": "click", "row": 7 },
+        "expect": { "diagnostics": [{ "code": "ROW_CONTEXT", "level": "error" }] }
+      }
+    ]
+  },
+  {
+    "id": "t-list-rows-observation",
+    "title": "列表行观察面按模板子地址给出各行求值结果",
+    "spec": "03-semantics.md 第 2.6 节；06-diagnostics.md 第 4.5 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main list #items source=#todos template=#tpl",
+      "add #root template #tpl as t",
+      "add #tpl row #line",
+      "add #line text #label text=t.text",
+      "data #todos = [] of {text: str = \"\"}"
+    ],
+    "steps": [
+      {
+        "send": [
+          "append #todos item={text: \"x\"}",
+          "append #todos item={text: \"y\"}",
+          "append #todos item={text: \"z\"}"
+        ],
+        "expect": {
+          "rows": {
+            "#items": [
+              { "#label": { "text": "x" } },
+              { "#label": { "text": "y" } },
+              { "#label": { "text": "z" } }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "t-event-payload-and-row",
+    "title": "事件载荷与行上下文是两个正交的绑定，可同时使用",
+    "spec": "03-semantics.md 第 2.8 节；01-grammar.md 第 7.7、8.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win list #items source=#todos template=#tpl",
+      "add #win text #echo text=\"\"",
+      "add #root template #tpl as row",
+      "add #tpl input #field value=row.text",
+      "data #todos = [] of {text: str = \"\"}",
+      "on #field change as e: set #echo text=row.text + \":\" + e.value"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "BOUND_VALUE_NOT_WRITTEN", "level": "warning" }]
+    },
+    "steps": [
+      {
+        "send": ["append #todos item={text: \"a\"}"],
+        "expect": { "data": { "#todos": [{ "text": "a" }] } }
+      },
+      {
+        "fire": { "target": "#field", "event": "change", "row": 0, "value": "zzz" },
+        "expect": { "attrs": { "#echo.text": "a:zzz" } }
+      }
+    ]
+  }
+]

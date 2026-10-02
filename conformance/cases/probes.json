@@ -1,0 +1,117 @@
+[
+  {
+    "id": "pr-tree",
+    "title": "tree 探针返回结构树",
+    "spec": "01-grammar.md 第 7.10 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main"
+    ],
+    "steps": [
+      {
+        "send": ["tree"],
+        "expect": {
+          "probes": [{ "verb": "tree", "result": { "id": "#root", "type": "root" } }]
+        }
+      }
+    ]
+  },
+  {
+    "id": "pr-get",
+    "title": "get 探针返回单个节点的形状",
+    "spec": "01-grammar.md 第 7.10 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "on #b click: set #b text=\"hit\""
+    ],
+    "steps": [
+      {
+        "send": ["get #b"],
+        "expect": {
+          "probes": [{ "verb": "get", "target": "#b",
+                       "result": { "id": "#b", "type": "button" } }]
+        }
+      }
+    ]
+  },
+  {
+    "id": "pr-where-degraded",
+    "title": "几何反查不可用时降级必须可见",
+    "spec": "01-grammar.md 第 7.10 节；06-diagnostics.md 第 4.7 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "on #b click: set #b text=\"hit\""
+    ],
+    "rendering": { "geometry": false },
+    "steps": [
+      {
+        "send": ["where #b"],
+        "expect": {
+          "diagnostics": [{ "code": "DEGRADED_FEATURE", "level": "info" }],
+          "probes": [{ "verb": "where", "result": { "geometry": null } }]
+        }
+      }
+    ]
+  },
+  {
+    "id": "pr-get-missing",
+    "title": "探针目标不存在是错误，result 为 null",
+    "spec": "01-grammar.md 第 7.10 节",
+    "program": [
+      "add #root window #win"
+    ],
+    "steps": [
+      {
+        "send": ["get #ghost"],
+        "expect": {
+          "diagnostics": [{ "code": "TARGET_MISSING", "level": "error" }],
+          "probes": [{ "verb": "get", "result": null }]
+        }
+      }
+    ]
+  },
+  {
+    "id": "pr-source-probe",
+    "title": "写在源文件里的探针在装载完成后执行",
+    "spec": "01-grammar.md 第 7.10 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "on #b click: set #b text=\"hit\"",
+      "tree"
+    ],
+    "loadExpect": {
+      "probes": [{ "verb": "tree", "result": { "id": "#root", "type": "root" } }]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#b"] } }
+    ]
+  },
+  {
+    "id": "pr-no-side-effects",
+    "title": "探针不改变程序或状态",
+    "spec": "01-grammar.md 第 7.10 节",
+    "program": [
+      "add #root window #win",
+      "data #n = [] of {v: int = 0}"
+    ],
+    "steps": [
+      {
+        "send": ["append #n item={v: 1}", "append #n item={v: 2}", "tree"],
+        "expect": {
+          "data": { "#n": [{ "v": 1 }, { "v": 2 }] },
+          "probes": [{ "verb": "tree" }]
+        }
+      },
+      {
+        "send": ["get #win"],
+        "expect": {
+          "probes": [{ "verb": "get", "result": { "id": "#win", "type": "window" } }],
+          "data": { "#n": [{ "v": 1 }, { "v": 2 }] }
+        }
+      }
+    ]
+  }
+]

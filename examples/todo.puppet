@@ -1,0 +1,37 @@
+// 待办清单 — 语言综合示例
+// 静态校验：puppet validate examples/todo.puppet
+// 它演示：模板为一等节点、值类属性的活绑定、行内事件的行上下文、
+//        持久化数据源、集合原语、状态标志 visible。
+
+add #root window #win title="待办清单" w=420 h=640 bgcolor=#f8fafc primary=#2563eb
+add #win col #main pad=16 gap=12
+
+add #main navbar #bar title="待办清单"
+add #main row #entry gap=8
+add #entry input #new placeholder="添加一项…" flex=1
+add #entry button #add text="添加" icon=add
+
+add #main list #items flex=1 source=#todos template=#tpl
+add #main text #empty text="还没有待办" fg=#94a3b8 visible=false
+add #main row #footer gap=8
+add #footer text #count text="共 " + str(count(#todos)) + " 条" fg=#64748b flex=1
+add #footer button #clear text="清除已完成" fg=#dc2626
+
+add #root template #tpl as t
+add #tpl row #line gap=8
+add #line checkbox #done value=t.done
+add #line text #label text=t.text flex=1
+add #line button #del text="删除" fg=#dc2626
+
+data #todos persist=true = [] of {text: str, done: bool = false}
+
+on #add click when #new.value != "":
+    append #todos item={text: #new.value} ; set #new value=""
+on #clear click:
+    remove_where #todos as t where t.done == true
+on #del click:
+    remove_where #todos as r where r.text == t.text
+on #done change as e:
+    update_where #todos as r set done=e.value where r.text == t.text
+on #todos change:
+    set #empty visible=count(#todos) == 0

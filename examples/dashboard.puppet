@@ -1,0 +1,38 @@
+// 仪表盘 — 列表、进度、能力调用与槽三态
+// 验收：puppet validate examples（零诊断）
+// 演示：模板行内绑定、槽的 pending/done/error 处理器、listen 订阅、进度条
+
+add #root window #win title="仪表盘" w=720 h=560 bgcolor=#f8fafc primary=#2563eb
+add #win col #main pad=16 gap=12
+
+add #main navbar #bar title="仪表盘"
+add #main row #tools gap=8
+add #tools button #refresh text="刷新" icon=refresh
+add #tools dropdown #range options=#ranges option_label=title option_value=key selected="day"
+add #tools text #status text="就绪" fg=#64748b flex=1
+
+add #main progress #load value=count(#metrics) max=24 fg=#2563eb
+add #main list #rows flex=1 source=#metrics template=#tpl
+add #main text #empty text="暂无数据，点「刷新」试试" fg=#94a3b8 visible=false
+
+add #root template #tpl as m
+add #tpl row #line gap=8 pad=8
+add #tpl text #metric text=m.name flex=1 fg=#0f172a
+add #tpl progress #pct value=m.pct max=100
+
+data #ranges = [{key: "day", title: "今日"}, {key: "week", title: "本周"}] of {key: str, title: str}
+data #metrics = [] of {name: str, pct: int = 0}
+data #scan persist=true = [] of {value: dict = {}}
+
+listen #scan done
+
+on #refresh click:
+    call scan with {range: #range.selected} into #scan
+on #scan pending:
+    set #status text="正在扫描…"
+on #scan done:
+    set #status text="完成"
+on #scan error:
+    set #status text="扫描失败"
+on #metrics change:
+    set #empty visible=count(#metrics) == 0

@@ -1,0 +1,274 @@
+[
+  {
+    "id": "p-call-unknown",
+    "title": "调用不存在的函数是错误，不得静默返回空值",
+    "spec": "01-grammar.md 第 7.9 节；03-semantics.md 第 4.1 节",
+    "program": [
+      "add #root window #win",
+      "data #res = [] of {value: str = \"\"}"
+    ],
+    "steps": [
+      {
+        "send": ["call nope with {} into #res"],
+        "expect": { "diagnostics": [{ "code": "CALL_UNKNOWN", "level": "error" }] }
+      }
+    ]
+  },
+  {
+    "id": "p-call-contract",
+    "title": "缺少必需参数是错误",
+    "spec": "03-semantics.md 第 4.1 节",
+    "program": [
+      "add #root window #win",
+      "data #res = [] of {value: str = \"\"}"
+    ],
+    "capabilities": [
+      {
+        "name": "compress",
+        "params": [{ "name": "input", "type": "str", "required": true }],
+        "returns": "dict",
+        "behavior": "return",
+        "value": { "path": "a", "size": 1 }
+      }
+    ],
+    "steps": [
+      {
+        "send": ["call compress with {} into #res"],
+        "expect": { "diagnostics": [{ "code": "CALL_CONTRACT", "level": "error" }] }
+      }
+    ]
+  },
+  {
+    "id": "p-call-result",
+    "title": "返回值不可序列化是错误",
+    "spec": "03-semantics.md 第 4.1 节",
+    "program": [
+      "add #root window #win",
+      "data #res = [] of {value: str = \"\"}"
+    ],
+    "capabilities": [
+      { "name": "weird", "params": [], "returns": "dict", "behavior": "nonjson" }
+    ],
+    "steps": [
+      {
+        "send": ["call weird with {} into #res"],
+        "expect": { "diagnostics": [{ "code": "CALL_RESULT", "level": "error" }] }
+      }
+    ]
+  },
+  {
+    "id": "p-slot-readable",
+    "title": "槽值可直接绑定读，不需要三段式处理器",
+    "spec": "03-semantics.md 第 4.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win text #s text=#res.status",
+      "data #res = [] of {value: str = \"\"}"
+    ],
+    "capabilities": [
+      { "name": "echo", "params": [], "returns": "str", "behavior": "return", "value": "hi" }
+    ],
+    "steps": [
+      {
+        "send": ["call echo with {} into #res"],
+        "expect": {
+          "slots": { "#res": { "status": "done" } },
+          "attrs": { "#s.text": "done" }
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-slot-timeout",
+    "title": "挂死的调用必须超时并可见，不得永久停在“进行中”",
+    "spec": "03-semantics.md 第 4.2 节",
+    "program": [
+      "add #root window #win",
+      "data #res = [] of {value: str = \"\"}"
+    ],
+    "limits": { "callTimeoutMs": 200 },
+    "capabilities": [
+      { "name": "slow", "params": [], "returns": "dict", "behavior": "hang" }
+    ],
+    "steps": [
+      {
+        "send": ["call slow with {} into #res"],
+        "expect": {
+          "diagnostics": [{ "code": "SLOT_TIMEOUT" }],
+          "slots": { "#res": { "status": "timeout" } }
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-convergence-limit",
+    "title": "处理器级联达到上限必须报可见错误，不得静默停止传播",
+    "spec": "03-semantics.md 第 3.3 节",
+    "program": [
+      "add #root window #win",
+      "data #a = [] of {n: int = 0}",
+      "on #a change: append #a item={n: 1}"
+    ],
+    "steps": [
+      {
+        "send": ["append #a item={n: 0}"],
+        "expect": { "diagnostics": [{ "code": "CONVERGENCE_LIMIT", "level": "error" }] }
+      }
+    ]
+  },
+  {
+    "id": "p-persist-survives-restart",
+    "title": "persist 数据在重启后存活",
+    "spec": "03-semantics.md 第 5 节",
+    "program": [
+      "add #root window #win",
+      "data #todos persist=true = [] of {text: str = \"\"}"
+    ],
+    "steps": [
+      {
+        "send": ["append #todos item={text: \"a\"}"],
+        "expect": { "data": { "#todos": [{ "text": "a" }] } }
+      },
+      {
+        "restart": true,
+        "expect": { "data": { "#todos": [{ "text": "a" }] } }
+      }
+    ]
+  },
+  {
+    "id": "p-transient-reset-on-restart",
+    "title": "非 persist 数据在重启后回到声明初值",
+    "spec": "03-semantics.md 第 5 节",
+    "program": [
+      "add #root window #win",
+      "data #tmp = [] of {text: str = \"\"}"
+    ],
+    "steps": [
+      {
+        "send": ["append #tmp item={text: \"a\"}"],
+        "expect": { "data": { "#tmp": [{ "text": "a" }] } }
+      },
+      {
+        "restart": true,
+        "expect": { "data": { "#tmp": [] } }
+      }
+    ]
+  },
+  {
+    "id": "p-state-rebuilt",
+    "title": "没有状态文件时从声明初值重建，并产生信息级事件",
+    "spec": "03-semantics.md 第 5 节；06-diagnostics.md 第 4.6 节",
+    "program": [
+      "add #root window #win",
+      "data #todos persist=true = [] of {text: str = \"\"}"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "STATE_REBUILT", "level": "info" }]
+    },
+    "steps": [
+      { "expect": { "data": { "#todos": [] } } }
+    ]
+  },
+  {
+    "id": "p-persist-drift",
+    "title": "持久状态出现未声明字段：报警告、不迁移、不丢数据",
+    "spec": "03-semantics.md 第 5 节；06-diagnostics.md 第 4.6 节",
+    "program": [
+      "add #root window #win",
+      "data #todos persist=true = [] of {text: str = \"\"}"
+    ],
+    "seedState": {
+      "revision": 1,
+      "items": { "#todos": [{ "text": "a", "legacy": 1 }] }
+    },
+    "steps": [
+      {
+        "expect": { "data": { "#todos": [{ "text": "a", "legacy": 1 }] } }
+      },
+      {
+        "restart": true,
+        "expect": {
+          "diagnostics": [{ "code": "PERSIST_SCHEMA_DRIFT", "level": "warning" }],
+          "data": { "#todos": [{ "text": "a", "legacy": 1 }] }
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-slot-cancelled",
+    "title": "同一槽上新的调用取消进行中的旧调用，且取消可见",
+    "spec": "03-semantics.md 第 4.2 节",
+    "program": [
+      "add #root window #win",
+      "data #res = [] of {value: str = \"\"}"
+    ],
+    "limits": { "callTimeoutMs": 400 },
+    "capabilities": [
+      { "name": "slow", "params": [], "returns": "str", "behavior": "hang" },
+      { "name": "fast", "params": [], "returns": "str", "behavior": "return", "value": "ok" }
+    ],
+    "steps": [
+      {
+        "send": [
+          "call slow with {} into #res",
+          "call fast with {} into #res"
+        ],
+        "expect": {
+          "diagnostics": [{ "code": "SLOT_CANCELLED", "level": "info" }],
+          "slots": { "#res": { "status": "done" } }
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-slot-handler-dispatch",
+    "title": "槽状态变化的处理器会被派发（pending 之后 done）",
+    "spec": "03-semantics.md 第 4.2 节",
+    "program": [
+      "add #root window #win",
+      "add #win text #status text=\"\"",
+      "data #res = [] of {value: str = \"\"}",
+      "on #res done as e: set #status text=e.status",
+      "on #res error as e: set #status text=\"错误：\" + e.status"
+    ],
+    "capabilities": [
+      { "name": "echo", "params": [], "returns": "str", "behavior": "return", "value": "hi" }
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["call echo with {} into #res"],
+        "expect": {
+          "attrs": { "#status.text": "done" },
+          "slots": { "#res": { "status": "done" } }
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-observation-dropped",
+    "title": "观察流溢出必须留下可见标记，不得静默丢弃",
+    "spec": "03-semantics.md 第 6 节；06-diagnostics.md 第 4.7 节",
+    "program": [
+      "add #root window #win",
+      "data #n = [] of {v: int = 0}",
+      "listen #n change"
+    ],
+    "limits": { "eventQueue": 2 },
+    "steps": [
+      {
+        "send": [
+          "append #n item={v: 1}",
+          "append #n item={v: 2}",
+          "append #n item={v: 3}",
+          "append #n item={v: 4}"
+        ],
+        "expect": {
+          "diagnostics": [{ "code": "OBSERVATION_DROPPED", "level": "warning" }],
+          "events": [{ "target": "#n", "event": "change" }],
+          "data": { "#n": [{ "v": 1 }, { "v": 2 }, { "v": 3 }, { "v": 4 }] }
+        }
+      }
+    ]
+  }
+]

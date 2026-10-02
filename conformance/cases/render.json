@@ -1,0 +1,166 @@
+[
+  {
+    "id": "r-relations-basic",
+    "title": "几何可用时，关系断言按矩形判定（方位/对齐/间距/包含）",
+    "spec": "05-render-contract.md 第 7.3、8 节",
+    "program": [
+      "add #root window #win",
+      "add #win row #bar gap=8",
+      "add #bar button #a text=\"A\"",
+      "add #bar button #b text=\"B\"",
+      "on #a click: set #a text=\"A\"",
+      "on #b click: set #b text=\"B\""
+    ],
+    "renderGeometry": {
+      "#win": { "x": 0, "y": 0, "width": 420, "height": 640 },
+      "#bar": { "x": 16, "y": 16, "width": 388, "height": 40 },
+      "#a": { "x": 16, "y": 16, "width": 80, "height": 40 },
+      "#b": { "x": 104, "y": 16, "width": 80, "height": 40 }
+    },
+    "steps": [
+      {
+        "expect": {
+          "geometry": { "#a": { "x": 16, "y": 16, "width": 80, "height": 40 } },
+          "relations": [
+            { "rel": "left_of", "a": "#a", "b": "#b" },
+            { "rel": "aligned_y", "a": "#a", "b": "#b" },
+            { "rel": "gap_h", "a": "#a", "b": "#b", "value": 8, "tol": 1 },
+            { "rel": "same_size", "a": "#a", "b": "#b" },
+            { "rel": "contains", "a": "#bar", "b": "#a" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "r-tolerance",
+    "title": "对齐容差：tol 内的偏差视为对齐",
+    "spec": "05-render-contract.md 第 8 节",
+    "program": [
+      "add #root window #win",
+      "add #win row #bar gap=8",
+      "add #bar button #a text=\"A\"",
+      "add #bar button #b text=\"B\"",
+      "on #a click: set #a text=\"A\"",
+      "on #b click: set #b text=\"B\""
+    ],
+    "renderGeometry": {
+      "#a": { "x": 10.0, "y": 10.0, "width": 50, "height": 20 },
+      "#b": { "x": 70.5, "y": 11.0, "width": 50, "height": 20 }
+    },
+    "steps": [
+      {
+        "expect": {
+          "relations": [
+            { "rel": "aligned_y", "a": "#a", "b": "#b", "tol": 1.5 },
+            { "rel": "same_width", "a": "#a", "b": "#b" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "r-relations-extended",
+    "title": "关系词汇覆盖：包含/方位/重叠/居中/间距/比例",
+    "spec": "05-render-contract.md 第 8 节",
+    "program": [
+      "add #root window #win w=420 h=640",
+      "add #win col #nav",
+      "add #win col #content",
+      "add #content button #a text=\"A\"",
+      "add #content button #b text=\"B\"",
+      "on #a click: set #a text=\"A\"",
+      "on #b click: set #b text=\"B\""
+    ],
+    "renderGeometry": {
+      "#win": { "x": 0, "y": 0, "width": 420, "height": 640 },
+      "#nav": { "x": 0, "y": 0, "width": 420, "height": 48 },
+      "#content": { "x": 0, "y": 56, "width": 420, "height": 584 },
+      "#a": { "x": 16, "y": 72, "width": 100, "height": 40 },
+      "#b": { "x": 100, "y": 72, "width": 200, "height": 40 }
+    },
+    "steps": [
+      {
+        "expect": {
+          "relations": [
+            { "rel": "inside", "a": "#nav", "b": "#win" },
+            { "rel": "contains", "a": "#win", "b": "#nav" },
+            { "rel": "above", "a": "#nav", "b": "#content" },
+            { "rel": "below", "a": "#content", "b": "#nav" },
+            { "rel": "aligned_x", "a": "#nav", "b": "#win" },
+            { "rel": "aligned_center_x", "a": "#nav", "b": "#win", "tol": 0.5 },
+            { "rel": "gap_v", "a": "#nav", "b": "#content", "value": 8 },
+            { "rel": "overlaps", "a": "#a", "b": "#b" },
+            { "rel": "same_height", "a": "#a", "b": "#b" },
+            { "rel": "width_ratio", "a": "#b", "b": "#a", "value": 2 }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "r-degrade-undeclared",
+    "title": "能力声明替身：未声明支持的词汇必须可见降级（control/attr/icon）",
+    "spec": "05-render-contract.md 第 1 节；06-diagnostics.md 第 4.7 节",
+    "program": [
+      "add #root window #win",
+      "add #win slider #s value=10 min=0 max=100",
+      "add #win icon #i icon=\"star\"",
+      "add #win button #b text=\"x\" shadow=4",
+      "on #b click: set #b text=\"x\""
+    ],
+    "rendering": {
+      "controls": ["window", "button", "icon"],
+      "attributes": ["text", "icon", "value", "min", "max"],
+      "icons": ["add"],
+      "geometry": false,
+      "snapshot": false,
+      "headless": true
+    },
+    "loadExpect": {
+      "degraded": ["control:slider", "attr:shadow", "icon:star"]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#s", "#i", "#b"] } }
+    ]
+  },
+  {
+    "id": "r-geometry-face",
+    "title": "几何面：能提供则按关系判定，不能提供则必须可见降级",
+    "spec": "05-render-contract.md 第 7、8 节；06-diagnostics.md 第 4.7 节",
+    "program": [
+      "add #root window #win",
+      "add #win row #bar gap=8",
+      "add #bar button #a text=\"A\"",
+      "add #bar button #b text=\"B\"",
+      "on #a click: set #a text=\"A\"",
+      "on #b click: set #b text=\"B\""
+    ],
+    "steps": [
+      {
+        "expect": {
+          "relations": [
+            { "rel": "left_of", "a": "#a", "b": "#b" },
+            { "rel": "aligned_y", "a": "#a", "b": "#b" }
+          ],
+          "degraded": ["geometry"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "r-snapshot-face",
+    "title": "视觉快照：不支持时必须在被请求时可见降级",
+    "spec": "05-render-contract.md 第 7 节；06-diagnostics.md 第 4.7 节",
+    "program": [
+      "add #root window #win",
+      "add #win text #t text=\"hi\""
+    ],
+    "steps": [
+      {
+        "snapshot": true,
+        "expect": { "degraded": ["snapshot"] }
+      }
+    ]
+  }
+]

@@ -1,0 +1,31 @@
+[project]
+name = "openpuppet-language"
+version = "2.0.0a1"
+description = "Puppet 语言标准实现（设计 + 语言规范 + 参考实现）。零第三方依赖。"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+# Tk 参考渲染器（`puppet conformance --tk`）需要 Tcl/Tk。
+# Debian/Ubuntu 需 `apt install python3-tk`；tkinter 属标准库，无 PyPI 依赖可声明。
+tk = []
+
+[project.scripts]
+puppet = "puppet.cli:main"
+
+[build-system]
+requires = ["setuptools>=62"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["puppet*"]
+exclude = ["tests*"]
+
+# 规范与 conformance 用例**必须随发行包分发**（设计决议：conformance 用例随发行包分发，
+# 下游用它自证合规）。二者是包外目录，故按 data-files 装到 <prefix>/share/puppet/，
+# 由 `puppet.cli` 的资源解析器定位——开发态优先用仓库根。
+[tool.setuptools.data-files]
+"share/puppet/spec" = ["spec/*.md"]
+"share/puppet/conformance" = ["conformance/*.md", "conformance/*.py"]
+"share/puppet/conformance/cases" = ["conformance/cases/*.json"]

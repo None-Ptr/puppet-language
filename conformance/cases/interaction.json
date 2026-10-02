@@ -1,0 +1,166 @@
+[
+  {
+    "id": "i-uncovered-button",
+    "title": "按钮的 click 没有处理器是警告：点了没反应必须被说出来",
+    "spec": "04-vocabulary.md 第 5.1 节；06-diagnostics.md 第 4.8 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\""
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "UNCOVERED_INTERACTION", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#b"] } }
+    ]
+  },
+  {
+    "id": "i-covered-button",
+    "title": "按钮的 click 有处理器即无此警告",
+    "spec": "04-vocabulary.md 第 5.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "on #b click: set #b text=\"hit\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "fire": { "target": "#b", "event": "click" },
+        "expect": { "attrs": { "#b.text": "hit" } }
+      }
+    ]
+  },
+  {
+    "id": "i-input-has-no-primary-action",
+    "title": "输入框不因“没有 change 处理器”而报警告",
+    "spec": "04-vocabulary.md 第 5.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win input #q placeholder=\"搜索\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      { "expect": { "nodes": ["#q"] } }
+    ]
+  },
+  {
+    "id": "i-template-checkbox-uncovered",
+    "title": "模板行内的勾选框没有 change 处理器同样是警告",
+    "spec": "04-vocabulary.md 第 5.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win list #items source=#todos template=#tpl",
+      "add #root template #tpl as t",
+      "add #tpl checkbox #done value=t.done",
+      "data #todos = [] of {done: bool = false}"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "UNCOVERED_INTERACTION", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#done"] } }
+    ]
+  },
+  {
+    "id": "i-checkbox-toggle-writes-back",
+    "title": "勾选框的 change 处理器把状态写回数据源，绑定随之更新",
+    "spec": "03-semantics.md 第 2.7 节；04-vocabulary.md 第 5.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win list #items source=#todos template=#tpl",
+      "add #win text #n text=str(count(#todos))",
+      "add #root template #tpl as t",
+      "add #tpl checkbox #done value=t.done",
+      "add #tpl text #label text=t.text",
+      "data #todos = [] of {text: str = \"\", done: bool = false}",
+      "on #done change as e: update_where #todos as r set done=e.value where r.text == t.text"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["append #todos item={text: \"a\", done: false}"],
+        "expect": { "data": { "#todos": [{ "text": "a", "done": false }] } }
+      },
+      {
+        "fire": { "target": "#done", "event": "change", "row": 0, "value": true },
+        "expect": { "data": { "#todos": [{ "text": "a", "done": true }] } }
+      },
+      {
+        "fire": { "target": "#done", "event": "change", "row": 0, "value": false },
+        "expect": { "data": { "#todos": [{ "text": "a", "done": false }] } }
+      }
+    ]
+  },
+  {
+    "id": "i-change-payload-value",
+    "title": "change 事件的载荷携带新值，处理器据此回写（不必靠取反猜测）",
+    "spec": "03-semantics.md 第 2.8 节；01-grammar.md 第 7.7 节",
+    "program": [
+      "add #root window #win",
+      "add #win list #items source=#todos template=#tpl",
+      "add #root template #tpl as t",
+      "add #tpl checkbox #done value=t.done",
+      "add #tpl text #label text=t.text",
+      "data #todos = [] of {text: str = \"\", done: bool = false}",
+      "on #done change as e: update_where #todos as r set done=e.value where r.text == t.text"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["append #todos item={text: \"a\", done: false}"],
+        "expect": { "data": { "#todos": [{ "text": "a", "done": false }] } }
+      },
+      {
+        "fire": { "target": "#done", "event": "change", "row": 0, "value": true },
+        "expect": { "data": { "#todos": [{ "text": "a", "done": true }] } }
+      },
+      {
+        "fire": { "target": "#done", "event": "change", "row": 0, "value": true },
+        "expect": { "data": { "#todos": [{ "text": "a", "done": true }] } }
+      }
+    ]
+  },
+  {
+    "id": "i-bound-value-not-written",
+    "title": "值绑定了数据源却没回写：警告（用户的改动会被覆盖）",
+    "spec": "03-semantics.md 第 2.8 节；06-diagnostics.md 第 4.8 节",
+    "program": [
+      "add #root window #win",
+      "add #win list #items source=#todos template=#tpl",
+      "add #win text #echo text=\"\"",
+      "add #root template #tpl as t",
+      "add #tpl checkbox #done value=t.done",
+      "data #todos = [] of {text: str = \"\", done: bool = false}",
+      "on #done change as e: set #echo text=str(e.value)"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "BOUND_VALUE_NOT_WRITTEN", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#done"] } }
+    ]
+  },
+  {
+    "id": "i-change-payload-observed",
+    "title": "订阅的 change 事件载荷也带新值",
+    "spec": "03-semantics.md 第 6 节",
+    "program": [
+      "add #root window #win",
+      "add #win input #q placeholder=\"搜索\"",
+      "add #win text #n text=\"\"",
+      "listen #q change",
+      "on #q change as e: set #n text=e.value"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "fire": { "target": "#q", "event": "change", "value": "abc" },
+        "expect": {
+          "events": [{ "target": "#q", "event": "change", "value": "abc" }],
+          "attrs": { "#n.text": "abc" }
+        }
+      }
+    ]
+  }
+]

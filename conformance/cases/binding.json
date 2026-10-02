@@ -1,0 +1,238 @@
+[
+  {
+    "id": "b-recompute",
+    "title": "值类属性随数据源变化自动重算，不需要手写 change 处理器",
+    "spec": "03-semantics.md 第 2.1、2.2 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main text #cnt text=str(count(#todos))",
+      "data #todos = [] of {text: str = \"\"}"
+    ],
+    "loadExpect": {
+      "noDiagnostics": true,
+      "attrs": { "#cnt.text": "0" }
+    },
+    "steps": [
+      {
+        "send": ["append #todos item={text: \"a\"}"],
+        "expect": { "attrs": { "#cnt.text": "1" } }
+      },
+      {
+        "send": ["append #todos item={text: \"b\"}"],
+        "expect": { "attrs": { "#cnt.text": "2" } }
+      }
+    ]
+  },
+  {
+    "id": "b-template-rows",
+    "title": "模板按行实例化求值，行绑定取自该行数据项",
+    "spec": "03-semantics.md 第 2.6 节；01-grammar.md 第 8 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main list #items source=#todos template=#tpl",
+      "add #root template #tpl as t",
+      "add #tpl row #r",
+      "add #r text #label text=t.text",
+      "data #todos = [] of {text: str = \"\"}"
+    ],
+    "steps": [
+      {
+        "send": [
+          "append #todos item={text: \"a\"}",
+          "append #todos item={text: \"b\"}"
+        ],
+        "expect": {
+          "rows": {
+            "#items": [
+              { "#label": { "text": "a" } },
+              { "#label": { "text": "b" } }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "b-cycle",
+    "title": "绑定成环在编译期报错",
+    "spec": "02-ir.md 第 4 节；03-semantics.md 第 2.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main text #a text=#b.text",
+      "add #main text #b text=#a.text"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "BIND_CYCLE", "level": "error" }]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#a", "#b"] } }
+    ]
+  },
+  {
+    "id": "b-unknown-ref",
+    "title": "绑定引用了不存在的地址或字段是错误",
+    "spec": "02-ir.md 第 4 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main text #a text=#ghost.text"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "BIND_UNKNOWN_REF", "level": "error" }]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#a"] } }
+    ]
+  },
+  {
+    "id": "b-set-override",
+    "title": "set 覆盖已绑定属性：解除绑定、写入字面量，且必须可见",
+    "spec": "03-semantics.md 第 2.7 节；06-diagnostics.md 第 4.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main text #cnt text=str(count(#todos))",
+      "data #todos = [] of {text: str = \"\"}"
+    ],
+    "steps": [
+      {
+        "send": ["set #cnt text=\"fixed\""],
+        "expect": {
+          "diagnostics": [{ "code": "BIND_OVERRIDDEN", "level": "info" }],
+          "attrs": { "#cnt.text": "fixed" }
+        }
+      },
+      {
+        "send": ["append #todos item={text: \"a\"}"],
+        "expect": { "attrs": { "#cnt.text": "fixed" } }
+      }
+    ]
+  },
+  {
+    "id": "b-ref-attr-expr",
+    "title": "引用类属性写表达式是错误",
+    "spec": "04-vocabulary.md 第 1 节；06-diagnostics.md 第 4.2 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main list #items source=#todos template=#tpl",
+      "add #root template #tpl as t",
+      "add #tpl text #label text=t.text",
+      "data #todos = [] of {text: str = \"\"}"
+    ],
+    "steps": [
+      {
+        "send": ["set #items source=\"x\" + \"y\""],
+        "expect": { "diagnostics": [{ "code": "REF_ATTR_EXPR", "level": "error" }] }
+      }
+    ]
+  },
+  {
+    "id": "b-eval-failure-visible",
+    "title": "绑定求值失败必须可见：诊断 + 错误标记，不得静默显示旧值或源码",
+    "spec": "03-semantics.md 第 2.5 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main text #bad text=str(10 / #d.n)",
+      "data #d = [{n: 0}] of {n: int = 1}"
+    ],
+    "loadExpect": {
+      "minErrors": 1,
+      "flags": { "#bad.error": true }
+    },
+    "steps": [
+      { "expect": { "flags": { "#bad.error": true } } }
+    ]
+  },
+  {
+    "id": "b-when-not-bool",
+    "title": "when 守卫不是布尔是错误",
+    "spec": "01-grammar.md 第 7.7 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "on #b click when \"x\": set #b visible=false"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "WHEN_NOT_BOOL", "level": "error" }]
+    },
+    "steps": [
+      { "expect": { "noDiagnostics": true } }
+    ]
+  },
+  {
+    "id": "b-disabled-handler",
+    "title": "静态禁用的节点绑定了交互处理器是警告",
+    "spec": "01-grammar.md 第 7.7 节；06-diagnostics.md 第 4.3 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\" disabled=true",
+      "on #b click: set #b visible=false"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "DISABLED_HANDLER", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "noDiagnostics": true } }
+    ]
+  },
+  {
+    "id": "b-disabled-blocks-dispatch",
+    "title": "引擎层拦截：禁用节点上派发的交互不执行，解禁后恢复",
+    "spec": "03-semantics.md 第 3.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\" disabled=true",
+      "add #win text #t text=\"on\"",
+      "on #b click: set #t text=\"clicked\""
+    ],
+    "steps": [
+      {
+        "fire": { "target": "#b", "event": "click" },
+        "expect": { "attrs": { "#t.text": "on" } }
+      },
+      {
+        "send": ["set #b disabled=false"],
+        "expect": { "flags": { "#b.disabled": false } }
+      },
+      {
+        "fire": { "target": "#b", "event": "click" },
+        "expect": { "attrs": { "#t.text": "clicked" } }
+      }
+    ]
+  },
+  {
+    "id": "b-animate-unknown",
+    "title": "animate 指向非语义可动画属性是警告",
+    "spec": "04-vocabulary.md 第 6 节；06-diagnostics.md 第 4.3 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #c animate=text"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "ANIMATE_UNKNOWN", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "noDiagnostics": true } }
+    ]
+  },
+  {
+    "id": "b-state-unknown-attr",
+    "title": "states 里出现外观白名单外的属性是警告",
+    "spec": "04-vocabulary.md 第 3.6 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #c states={hover: {foo: 1}}"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "STATE_UNKNOWN_ATTR", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "noDiagnostics": true } }
+    ]
+  }
+]

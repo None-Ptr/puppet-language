@@ -1,0 +1,248 @@
+[
+  {
+    "id": "g-minimal",
+    "title": "最小程序：根节点为内置节点，结构无诊断",
+    "spec": "01-grammar.md 第 5、7.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main"
+    ],
+    "loadExpect": {
+      "noDiagnostics": true,
+      "nodes": ["#root", "#win", "#main"]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#main"] } }
+    ]
+  },
+  {
+    "id": "g-id-dup",
+    "title": "地址重复是错误，且不阻断本批后续语句",
+    "spec": "01-grammar.md 第 3 节；03-semantics.md 第 1 节",
+    "program": [
+      "add #root window #win",
+      "add #root window #win",
+      "add #win col #main"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "ID_DUP", "level": "error" }],
+      "nodes": ["#win", "#main"]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#main"] } }
+    ]
+  },
+  {
+    "id": "g-parent-missing",
+    "title": "父地址不存在是错误",
+    "spec": "01-grammar.md 第 7.1 节",
+    "program": [
+      "add #ghost col #c"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "PARENT_MISSING", "level": "error" }],
+      "nodesAbsent": ["#c"]
+    },
+    "steps": [
+      { "expect": { "noDiagnostics": true } }
+    ]
+  },
+  {
+    "id": "g-anchor-missing",
+    "title": "锚点不存在是错误，且不得静默追加到末尾",
+    "spec": "01-grammar.md 第 7.1、7.5 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #a",
+      "add #win col #b after #ghost"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "ANCHOR_MISSING", "level": "error" }],
+      "nodes": ["#a"],
+      "nodesAbsent": ["#b"]
+    },
+    "steps": [
+      { "expect": { "nodesAbsent": ["#b"] } }
+    ]
+  },
+  {
+    "id": "g-del-missing",
+    "title": "删除不存在的目标是警告而非错误",
+    "spec": "01-grammar.md 第 7.4 节",
+    "program": [
+      "add #root window #win",
+      "del #ghost"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "DEL_MISSING", "level": "warning" }],
+      "forbid": ["TARGET_MISSING"]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#win"] } }
+    ]
+  },
+  {
+    "id": "g-move-cycle",
+    "title": "移动造成成环是错误",
+    "spec": "01-grammar.md 第 7.5 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #a",
+      "add #a col #b",
+      "move #a #b"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "MOVE_CYCLE", "level": "error" }],
+      "nodes": ["#a", "#b"]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#b"] } }
+    ]
+  },
+  {
+    "id": "g-unknown-attr",
+    "title": "词汇表外的属性名是警告，不得静默丢弃",
+    "spec": "01-grammar.md 第 5 节；04-vocabulary.md 第 1 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #c bgcolr=#ffffff"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "UNKNOWN_ATTR", "level": "warning" }],
+      "nodes": ["#c"]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#c"] } }
+    ]
+  },
+  {
+    "id": "g-unknown-type",
+    "title": "词汇表外的节点类型是警告，不得渲染成空白",
+    "spec": "01-grammar.md 第 5 节；04-vocabulary.md 第 2 节",
+    "program": [
+      "add #root widget #w"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "UNKNOWN_TYPE", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "noDiagnostics": true } }
+    ]
+  },
+  {
+    "id": "g-color-not-address",
+    "title": "颜色字面量与地址记号消歧：十六进制即颜色，不产生诊断",
+    "spec": "README.md 派生决定 5；01-grammar.md 第 2 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #c bgcolor=#eeeeee fg=#1d4ed8"
+    ],
+    "loadExpect": {
+      "noDiagnostics": true,
+      "nodes": ["#c"]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#c"] } }
+    ]
+  },
+  {
+    "id": "g-comment-line",
+    "title": "双斜杠注释行被忽略，不产生诊断",
+    "spec": "01-grammar.md 第 2 节",
+    "program": [
+      "// 这是一个注释",
+      "add #root window #win",
+      "add #win col #main"
+    ],
+    "loadExpect": {
+      "noDiagnostics": true,
+      "nodes": ["#main"]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#main"] } }
+    ]
+  },
+  {
+    "id": "g-template-node",
+    "title": "模板是一等节点：拥有地址与子节点，不产生专属节点表",
+    "spec": "01-grammar.md 第 8 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #main",
+      "add #main list #items source=#todos template=#tpl",
+      "add #root template #tpl as t",
+      "add #tpl row #r",
+      "data #todos = [] of {text: str = \"\"}"
+    ],
+    "loadExpect": {
+      "noDiagnostics": true,
+      "nodes": ["#tpl", "#r"]
+    },
+    "steps": [
+      { "expect": { "nodes": ["#tpl", "#r"] } }
+    ]
+  },
+  {
+    "id": "g-states-layout-attr",
+    "title": "状态外观里出现布局属性是警告",
+    "spec": "01-grammar.md 第 9 节；04-vocabulary.md 第 3.6 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #c states={hover: {pad: 8}}"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "STATE_LAYOUT_ATTR", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "noDiagnostics": true } }
+    ]
+  },
+  {
+    "id": "g-unknown-event",
+    "title": "未识别的事件名是警告",
+    "spec": "01-grammar.md 第 7.7 节；04-vocabulary.md 第 5 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #c",
+      "on #c hovered: set #c visible=false"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "UNKNOWN_EVENT", "level": "warning" }]
+    },
+    "steps": [
+      { "expect": { "noDiagnostics": true } }
+    ]
+  },
+  {
+    "id": "g-on-body-multiline",
+    "title": "行为头之后的缩进体属于它，与单行写法等价",
+    "spec": "01-grammar.md 第 1、7.7 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"x\"",
+      "add #win text #t text=\"\"",
+      "on #b click:",
+      "    set #t text=\"hit\"",
+      "on #b focus: set #t text=\"focused\"",
+      "",
+      "on #b blur:",
+      "    // 注释行不参与缩进判定",
+      "    set #t text=\"blurred\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "fire": { "target": "#b", "event": "click" },
+        "expect": { "attrs": { "#t.text": "hit" } }
+      },
+      {
+        "fire": { "target": "#b", "event": "focus" },
+        "expect": { "attrs": { "#t.text": "focused" } }
+      },
+      {
+        "fire": { "target": "#b", "event": "blur" },
+        "expect": { "attrs": { "#t.text": "blurred" } }
+      }
+    ]
+  }
+]

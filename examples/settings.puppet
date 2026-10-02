@@ -1,0 +1,35 @@
+// 设置页 — 表单、校验、错误态
+// 验收：puppet validate examples（零诊断）
+// 演示：下拉/滑块/开关的"提交时才读"、错误提示的可见性切换、持久化表单数据
+
+add #root window #win title="设置" w=480 h=640 bgcolor=#f8fafc primary=#2563eb
+add #win col #main pad=16 gap=12
+
+add #main navbar #bar title="设置"
+
+add #main text #l_name text="显示名称" fg=#334155
+add #main input #name placeholder="你的名字"
+add #main text #name_err text="名称不能为空" fg=#dc2626 visible=false
+
+add #main text #l_theme text="主题" fg=#334155
+add #main dropdown #theme options=#themes option_label=title option_value=key selected="light"
+
+add #main text #l_size text="字号" fg=#334155
+add #main slider #size value=14 min=10 max=24 step=1
+
+add #main row #auto gap=8
+add #auto text #l_auto text="自动保存" flex=1 fg=#334155
+add #auto switch #auto_save value=true
+
+add #main spacer #sp
+add #main button #save text="保存" icon=save primary=true
+
+data #themes = [{key: "light", title: "浅色"}, {key: "dark", title: "深色"}] of {key: str, title: str}
+data #form persist=true = [] of {name: str = "", theme: str = "light", size: int = 14, auto: bool = true}
+
+on #save click when #name.value != "":
+    append #form item={name: #name.value, theme: #theme.selected, size: #size.value, auto: #auto_save.value} ; set #name_err visible=false
+on #save click when #name.value == "":
+    set #name_err visible=true
+on #name change as e:
+    set #name_err visible=e.value == ""

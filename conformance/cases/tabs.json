@@ -1,0 +1,39 @@
+[
+  {
+    "id": "tb-pages-are-children",
+    "title": "tabs 的每个直接子节点是一页",
+    "spec": "04-vocabulary.md 第 2 节",
+    "program": [
+      "add #root window #win",
+      "add #win tabs #t",
+      "add #t col #p1",
+      "add #t col #p2"
+    ],
+    "loadExpect": { "nodes": ["#t", "#p1", "#p2"] },
+    "steps": [
+      { "expect": { "nodes": ["#p1", "#p2"] } }
+    ]
+  },
+  {
+    "id": "tb-selected-index",
+    "title": "selected 指向页序号（从 0 起），可写",
+    "spec": "04-vocabulary.md 第 2、4 节",
+    "program": [
+      "add #root window #win",
+      "add #win tabs #t selected=0",
+      "add #t col #p1",
+      "add #t col #p2"
+    ],
+    "loadExpect": { "attrs": { "#t.selected": 0 } },
+    "steps": [
+      {
+        "send": ["set #t selected=1"],
+        "expect": { "attrs": { "#t.selected": 1 } }
+      },
+      {
+        "send": ["set #t selected=0"],
+        "expect": { "attrs": { "#t.selected": 0 } }
+      }
+    ]
+  }
+]
