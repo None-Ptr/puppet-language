@@ -25,7 +25,7 @@ EXPECT_KEYS = {
     "diagnostics", "forbid", "minErrors", "noDiagnostics",
     "events", "noEvents", "probes",
     "nodes", "nodesAbsent", "attrs", "data", "flags", "slots", "rows",
-    "geometry", "relations", "degraded", "note",
+    "geometry", "relations", "degraded", "snapshotAvailable", "note",
 }
 OBSERVE_KEYS = {"events", "probes", "nodes", "attrs", "data", "flags",
                 "slots", "rows", "geometry"}
@@ -154,6 +154,8 @@ def validate_expect(expect, where, problems):
             problems.append("%s: degraded 的每项必须是字符串" % where)
         elif not (feat in DEGRADED_OBS or feat.startswith(DEGRADED_PREFIXES)):
             problems.append("%s: degraded 特性 %r 形式非法" % (where, feat))
+    if "snapshotAvailable" in expect and not isinstance(expect["snapshotAvailable"], bool):
+        problems.append("%s: snapshotAvailable 必须是布尔" % where)
     if "minErrors" in expect and not isinstance(expect["minErrors"], int):
         problems.append("%s: minErrors 必须是整数" % where)
 
@@ -488,6 +490,12 @@ def check_expect(expect, diags, snap, where, rendering=None, geometry_available=
         if not _has_degraded(diags, feat):
             problems.append("%s: 未声明支持 %s，但未见 DEGRADED_FEATURE(feature=%s)"
                             % (where, feat, feat))
+    if "snapshotAvailable" in expect:
+        # 只断言"真的产出了图像"（非空），**不做像素比对**——像素级外观属实现自由
+        got = bool((snap or {}).get("snapshotAvailable"))
+        if got != bool(expect["snapshotAvailable"]):
+            problems.append("%s: 截图可用性期望 %r，实际 %r"
+                            % (where, expect["snapshotAvailable"], got))
     return problems
 
 
@@ -609,8 +617,12 @@ def run_case(case, impl, wait_seconds):
             diags += impl.request(req).get("diagnostics", [])
         if step.get("restart"):
             diags = impl.request({"op": "restart"}).get("diagnostics", [])
+        snapshot_image = None
         if step.get("snapshot"):
-            diags += impl.request({"op": "snapshot"}).get("diagnostics", [])
+            snap_resp = impl.request({"op": "snapshot"})
+            diags += snap_resp.get("diagnostics", [])
+            # 只记"是否真的产出了图像"，不比对像素
+            snapshot_image = bool(snap_resp.get("image"))
         want = step.get("expect")
         if want is None:
             continue
@@ -634,6 +646,7 @@ def run_case(case, impl, wait_seconds):
             view = dict(snap)
             view["events"] = seen_events
             view["probes"] = seen_probes
+            view["snapshotAvailable"] = snapshot_image
             last = check_expect(want, diags, view, where, rendering, geometry_available)
             if not last or time.time() >= deadline:
                 break

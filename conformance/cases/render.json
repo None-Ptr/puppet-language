@@ -149,6 +149,20 @@
     ]
   },
   {
+    "id": "r-snapshot-real",
+    "title": "真实截图：被请求时必须真的产出图像（只断非空，不比像素）",
+    "spec": "05-render-contract.md 第 7 节",
+    "requires": ["snapshot"],
+    "program": [
+      "add #root window #win w=200 h=120",
+      "add #win button #b text=\"x\"",
+      "on #b click: set #b text=\"y\""
+    ],
+    "steps": [
+      { "snapshot": true, "expect": { "snapshotAvailable": true } }
+    ]
+  },
+  {
     "id": "r-snapshot-face",
     "title": "视觉快照：不支持时必须在被请求时可见降级",
     "spec": "05-render-contract.md 第 7 节；06-diagnostics.md 第 4.7 节",

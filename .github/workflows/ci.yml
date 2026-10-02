@@ -19,6 +19,8 @@ jobs:
         run: python conformance/runner.py --check
       - name: 合规用例（无渲染器适配器）
         run: python conformance/runner.py --impl-module puppet.adapter
+      - name: 合规用例（软件光栅渲染器：真实几何 + 真实 PNG 截图 + 命中测试交互）
+        run: python conformance/runner.py --impl-module puppet.raster_adapter
       - name: 真实示例零诊断
         run: python -m puppet.cli validate examples --strict
 

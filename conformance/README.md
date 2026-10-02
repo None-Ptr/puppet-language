@@ -119,9 +119,9 @@ python conformance/runner.py --impl "..." --filter b-cycle
   - 声明 `geometry: false` → 必须表现为无几何（哪怕实现其实量得到）。
   这让"未声明 → 必须降级"的 oracle 路径可以**确定性**地用例化，而不依赖某个实现恰好缺什么。
 - 几何来源优先级：**观测替身 > 声明替身（geometry:false 即无） > 真实测量**。
-- 参考实现两枚：`python -m puppet.adapter`（无渲染器，词汇全声明、geometry/snapshot=false、
+- 参考实现三枚：`python -m puppet.adapter`（无渲染器，词汇全声明、geometry/snapshot=false、
   headless=true）与 `python -m puppet.tk_adapter`（Tk 渲染器，geometry=true、词汇子集声明——
-  未声明词汇真实降级）。同一套用例必须两者全绿，这正是"渲染器无关"的自证。
+  未声明词汇真实降级）与 `python -m puppet.raster_adapter`（软件光栅渲染器：确定性堆叠布局 + **纯标准库 PNG 截图** + **命中测试**交互，geometry/snapshot/interaction 全 true、headless=true，**不需要显示器**）。同一套用例必须三者全绿，这正是"渲染器无关"的自证。
 
 ### 4.1.3 视觉快照（`snapshot`）
 
@@ -271,4 +271,4 @@ python conformance/runner.py --impl "..." --filter b-cycle
 （规范 05 第 9 节），同一实现在等价输入下一致即可；按规范纪律，本套件**不**对像素做黄金图像比对。
 
 **已知未覆盖项**：`tabs` 的"非选中页不占位"尚未用例化——它需要真实渲染器的几何（声明替身给不出
-"随 `selected` 切换而变化的矩形"）；待第二个几何渲染器出现后补入，届时还能交叉验证两个实现。
+"随 `selected` 切换而变化的矩形"）；两个真实渲染器（Tk 与软件光栅）目前都未声明 `tabs`，故它仍未覆盖；交叉验证已落地——同一套用例在三个适配器上全绿。
