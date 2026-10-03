@@ -1,0 +1,182 @@
+[
+  {
+    "id": "dlg-undeclared-degrades",
+    "title": "未声明支持 dialog 的实现：被使用时必须可见降级（不得静默）",
+    "spec": "05-render-contract.md 第 1 节",
+    "program": [
+      "add #root window #win",
+      "add #win dialog #dlg visible=false",
+      "add #dlg text #msg text=\"覆盖层\""
+    ],
+    "loadExpect": {
+      "degraded": ["control:dialog"],
+      "note": "声明即 oracle 的另一半：未声明支持 → 必须产生 DEGRADED_FEATURE(feature=control:dialog)；已声明支持则不要求降级"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#dlg", "#msg"] } }
+    ]
+  },
+  {
+    "id": "dlg-hidden-not-blocking",
+    "title": "隐藏的 dialog 不阻断：下层按钮照常可点",
+    "spec": "05-render-contract.md 第 2、4 节",
+    "requires": ["control:dialog", "interaction"],
+    "program": [
+      "add #root window #win",
+      "add #win text #log text=\"未点\"",
+      "add #win button #act text=\"执行\"",
+      "add #win dialog #dlg visible=false",
+      "add #dlg text #msg text=\"确定吗\"",
+      "on #act click: set #log text=\"DEL\""
+    ],
+    "steps": [
+      { "interact": { "target": "#act", "action": "click" } },
+      {
+        "expect": {
+          "attrs": { "#log.text": "DEL" },
+          "note": "隐藏的覆盖层不占位、不绘制、不阻断"
+        }
+      }
+    ]
+  },
+  {
+    "id": "dlg-visible-blocks-lower",
+    "title": "可见的 dialog 阻断下层交互：点击不穿透",
+    "spec": "05-render-contract.md 第 2、4 节",
+    "requires": ["control:dialog", "interaction"],
+    "program": [
+      "add #root window #win",
+      "add #win text #log text=\"未点\"",
+      "add #win button #act text=\"执行\"",
+      "add #win dialog #dlg visible=false",
+      "add #dlg text #msg text=\"确定吗\"",
+      "on #act click: set #log text=\"DEL\""
+    ],
+    "steps": [
+      { "send": ["set #dlg visible=true"] },
+      { "interact": { "target": "#act", "action": "click" } },
+      {
+        "expect": {
+          "attrs": { "#log.text": "未点" },
+          "flags": { "#dlg.visible": true },
+          "note": "模态的实质是阻断下层交互——这正是只靠 visible 手写覆盖层做不到的事"
+        }
+      }
+    ]
+  },
+  {
+    "id": "dlg-inside-still-interactive",
+    "title": "对话框自己的子节点照常可交互",
+    "spec": "05-render-contract.md 第 4 节",
+    "requires": ["control:dialog", "interaction"],
+    "program": [
+      "add #root window #win",
+      "add #win text #log text=\"未点\"",
+      "add #win dialog #dlg visible=false",
+      "add #dlg col #box pad=16",
+      "add #box text #ask text=\"确定删除全部？\"",
+      "add #box button #no text=\"取消\"",
+      "on #no click: set #log text=\"已取消\""
+    ],
+    "steps": [
+      { "send": ["set #dlg visible=true"] },
+      { "interact": { "target": "#no", "action": "click" } },
+      {
+        "expect": {
+          "attrs": { "#log.text": "已取消" },
+          "note": "阻断只针对子树之外；对话框内部照常可用"
+        }
+      }
+    ]
+  },
+  {
+    "id": "dlg-covers-parent",
+    "title": "dialog 铺满父的内容区（覆盖层几何）",
+    "spec": "05-render-contract.md 第 2 节",
+    "requires": ["control:dialog", "interaction"],
+    "program": [
+      "add #root window #win",
+      "add #win dialog #dlg visible=false",
+      "add #dlg text #msg text=\"覆盖层\""
+    ],
+    "steps": [
+      { "send": ["set #dlg visible=true"] },
+      {
+        "expect": {
+          "relations": [
+            { "rel": "same_size", "a": "#dlg", "b": "#win", "tol": 1 },
+            { "rel": "contains", "a": "#dlg", "b": "#msg" }
+          ],
+          "note": "铺满父的内容区，且不占兄弟的流动位置"
+        }
+      }
+    ]
+  },
+  {
+    "id": "dlg-stacking-topmost-blocks",
+    "title": "多个可见 dialog 叠加：只有最上层（后声明）参与阻断",
+    "spec": "05-render-contract.md 第 2、4 节",
+    "requires": ["control:dialog", "interaction"],
+    "program": [
+      "add #root window #win",
+      "add #win text #log text=\"未点\"",
+      "add #win dialog #d1 visible=false",
+      "add #d1 button #b1 text=\"一层按钮\"",
+      "add #win dialog #d2 visible=false",
+      "add #d2 text #m2 text=\"二层\"",
+      "on #b1 click: set #log text=\"点到一层\""
+    ],
+    "steps": [
+      { "send": ["set #d1 visible=true", "set #d2 visible=true"] },
+      { "interact": { "target": "#b1", "action": "click" } },
+      {
+        "expect": {
+          "attrs": { "#log.text": "未点" },
+          "note": "后声明的 #d2 在上：点不到被它盖住的 #d1 里的按钮"
+        }
+      }
+    ]
+  },
+  {
+    "id": "dlg-confirm-delete",
+    "title": "真实场景：删除前确认（模态使“取消”真的能取消）",
+    "spec": "04-vocabulary.md 第 2.1 节",
+    "requires": ["control:dialog", "interaction"],
+    "program": [
+      "add #root window #win",
+      "add #win text #log text=\"4 项\"",
+      "add #win button #del text=\"删除\"",
+      "add #win dialog #confirm visible=false",
+      "add #confirm col #box pad=16",
+      "add #box text #ask text=\"确定删除全部？\"",
+      "add #box button #yes text=\"确定\"",
+      "add #box button #no text=\"取消\"",
+      "on #del click: set #log text=\"DEL\"",
+      "on #no click: set #log text=\"已取消\""
+    ],
+    "steps": [
+      { "interact": { "target": "#del", "action": "click" } },
+      {
+        "expect": {
+          "attrs": { "#log.text": "DEL" },
+          "note": "确认框没弹出来时，删除按钮是可点的"
+        }
+      },
+      { "send": ["set #confirm visible=true"] },
+      { "interact": { "target": "#del", "action": "click" } },
+      {
+        "expect": {
+          "attrs": { "#log.text": "DEL" },
+          "note": "确认框可见时，下面的“删除”已被阻断——点击不会再次触发它"
+        }
+      },
+      { "interact": { "target": "#no", "action": "click" } },
+      {
+        "expect": {
+          "attrs": { "#log.text": "已取消" },
+          "note": "框内可用：用户想点“取消”就真的只发生取消"
+        }
+      }
+    ]
+  }
+]

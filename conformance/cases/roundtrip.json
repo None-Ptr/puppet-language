@@ -1,0 +1,119 @@
+[
+  {
+    "id": "rt-01-structure",
+    "title": "往返：节点结构、属性、模板、数据源、处理器都经写回而不丢",
+    "spec": "02-ir",
+    "program": [
+      "add #root window #win title=\"往返\"",
+      "add #win col #body gap=12",
+      "add #body text #t text=\"你好\"",
+      "add #body list #items source=#todos template=#row",
+      "add #body template #row as r",
+      "add #row text #label text=r.text",
+      "data #todos = [] of {text: str, done: bool = false}",
+      "on #t click: set #t text=\"点过了\""
+    ],
+    "steps": [
+      {
+        "expect": {
+          "nodes": ["#root", "#win", "#body", "#t", "#items", "#row", "#label"],
+          "attrs": {"#t.text": "你好", "#win.title": "往返"},
+          "noDiagnostics": true
+        }
+      },
+      {"roundtrip": true},
+      {
+        "expect": {
+          "nodes": ["#root", "#win", "#body", "#t", "#items", "#row", "#label"],
+          "attrs": {"#t.text": "你好", "#win.title": "往返"},
+          "noDiagnostics": true,
+          "note": "往返后同一套断言仍成立：写回没有丢结构、属性、模板绑定或处理器"
+        }
+      }
+    ]
+  },
+  {
+    "id": "rt-02-after-batch",
+    "title": "往返：批次改动（含 set 覆盖）经写回后仍然保留",
+    "spec": "02-ir",
+    "program": [
+      "add #root window #win"
+    ],
+    "steps": [
+      {
+        "send": [
+          "add #win button #b text=\"A\"",
+          "set #b text=\"B\""
+        ]
+      },
+      {"expect": {"attrs": {"#b.text": "B"}}},
+      {"roundtrip": true},
+      {
+        "expect": {
+          "attrs": {"#b.text": "B"},
+          "noDiagnostics": true,
+          "note": "命令批的结果写进真源，往返后不退回旧值"
+        }
+      }
+    ]
+  },
+  {
+    "id": "rt-03-behavior",
+    "title": "往返：行为等价（往返后事件处理仍照常生效）",
+    "spec": "02-ir",
+    "program": [
+      "add #root window #win",
+      "add #win input #i",
+      "add #win text #t text=\"初始\"",
+      "on #i change as e: set #t text=e.value"
+    ],
+    "steps": [
+      {
+        "fire": {"target": "#i", "event": "change", "value": "abc"}
+      },
+      {"expect": {"attrs": {"#t.text": "abc"}}},
+      {"roundtrip": true},
+      {
+        "fire": {"target": "#i", "event": "change", "value": "xyz"}
+      },
+      {
+        "expect": {
+          "attrs": {"#t.text": "xyz"},
+          "noDiagnostics": true,
+          "note": "不只结构与属性等价，行为也等价——处理器与绑定经写回后依然生效"
+        }
+      }
+    ]
+  },
+  {
+    "id": "rt-04-state-not-in-source",
+    "title": "往返：运行期数据不进真源（重载后回到声明初值）",
+    "spec": "02-ir",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"加一条\"",
+      "add #win list #lst source=#todos template=#row",
+      "add #win template #row as r",
+      "add #row text #l text=r.text",
+      "data #todos = [] of {text: str}",
+      "on #b click: append #todos item={text: \"x\"}"
+    ],
+    "steps": [
+      {"fire": {"target": "#b", "event": "click"}},
+      {
+        "expect": {
+          "data": {"#todos": [{"text": "x"}]},
+          "note": "事件确实改了运行期数据"
+        }
+      },
+      {"roundtrip": true},
+      {
+        "expect": {
+          "data": {"#todos": []},
+          "noDiagnostics": true,
+          "note": "往返等于重载：数据项不在真源里，故回到声明初值——状态与程序两本账的可见证据"
+        }
+      }
+    ]
+  }
+]

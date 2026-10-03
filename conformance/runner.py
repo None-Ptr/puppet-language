@@ -32,10 +32,10 @@ OBSERVE_KEYS = {"events", "probes", "nodes", "attrs", "data", "flags",
 CASE_KEYS = {
     "id", "title", "spec", "program", "steps", "requires",
     "loadExpect", "capabilities", "limits", "seedState", "renderGeometry",
-    "rendering", "capabilityModules",
+    "rendering", "capabilityModules", "assetsDir",
 }
-STEP_KEYS = {"send", "fire", "interact", "restart", "snapshot", "expect"}
-STEP_ACTIONS = {"send", "fire", "interact", "restart", "snapshot", "expect"}
+STEP_KEYS = {"send", "fire", "interact", "restart", "snapshot", "roundtrip", "expect"}
+STEP_ACTIONS = {"send", "fire", "interact", "restart", "snapshot", "roundtrip", "expect"}
 BEHAVIORS = {"return", "error", "hang", "nonjson", "delay"}
 LEVELS = {"error", "warning", "info"}
 # `interact` 的动作集 = 规范 05 第 4 节的交互事件名
@@ -206,6 +206,8 @@ def validate_case(case, where):
                     problems.append("%s: interact.action 非法：%r" % (sw, act["action"]))
             if "snapshot" in step and not isinstance(step["snapshot"], bool):
                 problems.append("%s: snapshot 必须是布尔" % sw)
+            if "roundtrip" in step and not isinstance(step["roundtrip"], bool):
+                problems.append("%s: roundtrip 必须是布尔" % sw)
             if "expect" in step:
                 validate_expect(step["expect"], sw + ".expect", problems)
     for cap in case.get("capabilities", []):
@@ -223,6 +225,8 @@ def validate_case(case, where):
     for path in case.get("capabilityModules", []):
         if not isinstance(path, str):
             problems.append("%s: capabilityModules 的每项必须是字符串路径" % where)
+    if "assetsDir" in case and not isinstance(case["assetsDir"], str):
+        problems.append("%s: assetsDir 必须是字符串路径" % where)
     if "rendering" in case:
         r = case["rendering"]
         if not isinstance(r, dict):
@@ -592,6 +596,12 @@ def run_case(case, impl, wait_seconds):
         req["capabilityModules"] = [
             p if os.path.isabs(p) else os.path.join(HERE, p)
             for p in case["capabilityModules"]]
+    # 资源根目录（可选）：提供时实现会校验 `src` 指向的文件确实存在；同样按 conformance/ 解析
+    assets_dir = case.get("assetsDir") or ""
+    if assets_dir and not os.path.isabs(assets_dir):
+        assets_dir = os.path.join(HERE, assets_dir)
+    if assets_dir:
+        req["assetsDir"] = assets_dir
     resp = impl.request(req)
     load_diags = list(resp.get("diagnostics", []))
     # 只有用例真的要断言装载期诊断时才观察一次：**没人监听时不消费观察流**，
@@ -623,6 +633,19 @@ def run_case(case, impl, wait_seconds):
             diags += snap_resp.get("diagnostics", [])
             # 只记"是否真的产出了图像"，不比对像素
             snapshot_image = bool(snap_resp.get("image"))
+        if step.get("roundtrip"):
+            # 往返：把当前程序**打印成源文本**，再原样重新装载。
+            # 验证"命令批 → 打印 → 源文本 → 重载 → 行为等价"这条真源写回链路。
+            # 装载参数与初始 load 完全一致，使唯一的变化就是"经了一轮打印与重解析"。
+            dumped = impl.request({"op": "dump"}).get("program") or []
+            req = {"op": "load", "program": dumped}
+            for key in ("capabilities", "limits", "seedState", "renderGeometry",
+                        "rendering", "capabilityModules"):
+                if key in case:
+                    req[key] = case[key]
+            if assets_dir:
+                req["assetsDir"] = assets_dir
+            diags += impl.request(req).get("diagnostics", [])
         want = step.get("expect")
         if want is None:
             continue

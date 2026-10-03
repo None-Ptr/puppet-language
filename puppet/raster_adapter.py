@@ -27,8 +27,8 @@ from .engine import Engine
 from .lang import Lit
 
 RENDERING = {
-    "controls": ["window", "col", "row", "template", "text", "button", "input",
-                 "checkbox", "divider", "spacer", "icon", "progress"],
+    "controls": ["window", "dialog", "col", "row", "template", "text", "button",
+                 "input", "checkbox", "divider", "spacer", "icon", "progress"],
     "attributes": ["gap", "w", "h", "x", "y", "bgcolor", "fg", "text",
                    "title", "flex"],
     "animations": [],
@@ -41,7 +41,18 @@ RENDERING = {
              "无需显示器。文本按内容带绘制（无字形栅格化），故像素级外观不在其能力内。",
 }
 
-_CONTAINERS = ("window", "col", "row")
+_CONTAINERS = ("window", "dialog", "col", "row")
+
+
+def _under(program, nid: str, root: str) -> bool:
+    """`nid` 是否就是 `root`、或它的后代（模态阻断用，见规范 05 第 4 节）。"""
+    cur = nid
+    while cur:
+        if cur == root:
+            return True
+        node = program.nodes.get(cur)
+        cur = node.parent if node is not None else None
+    return False
 _GAP_DEFAULT = 8
 # 未声明 w/h 时的自然尺寸（确定性，不依赖字体度量——故跨实现可比）
 _NATURAL = {
@@ -57,6 +68,7 @@ _BG = {
     "text": (30, 41, 59), "button": (37, 99, 235), "input": (255, 255, 255),
     "checkbox": (255, 255, 255), "divider": (226, 232, 240), "spacer": (241, 245, 249),
     "icon": (100, 116, 139), "progress": (191, 219, 254),
+    "dialog": (203, 213, 225),          # 覆盖层底色（近似遮罩）
 }
 _BG_DEFAULT = (226, 232, 240)
 _TEXTUAL = ("text", "button", "input", "checkbox")
@@ -147,6 +159,11 @@ class RasterRenderer:
                 continue
             if not self.engine.flag(child.id, "visible"):
                 continue                      # visible=false 不占位（规范 05 第 2 节）
+            if child.type == "dialog":
+                # 覆盖层：铺满父的内容区，且**不参与兄弟的流动排布**（不占流动位置）。
+                # 隐藏时不进入此处（上面的 visible 检查已拦），故不占位、不绘制、不阻断。
+                self._place(child, x, y, width, height)
+                continue
             cx, cy = self._static(child, "x"), self._static(child, "y")
             if isinstance(cx, (int, float)) and isinstance(cy, (int, float)):
                 absolute.append(child)        # 绝对定位：脱离流动
@@ -238,10 +255,28 @@ class RasterRenderer:
 
     # ------------------------------------------------------------ 交互（命中测试）
 
+    def _modal(self):
+        """最上层**可见**的 `dialog`（后声明的在上）；没有则 None。
+
+        这是渲染契约的一部分：模态可见时命中测试必须限制在其子树内（规范 05 第 4 节）。
+        """
+        modal = None
+        for nid, node in self.engine.program.nodes.items():
+            if node.type == "dialog" and self.engine.flag(nid, "visible"):
+                modal = nid
+        return modal
+
     def _hit(self, x, y):
-        """命中测试：返回包含该点的最深层节点（后画的小节点优先）。"""
+        """命中测试：返回包含该点的最深层节点（后画的小节点优先）。
+
+        **模态阻断**：存在可见的 `dialog` 时，命中范围限制在其子树内——子树之外的
+        交互一律被阻断，**不穿透到下层控件**。
+        """
+        modal = self._modal()
         best = None
         for nid, rect in self.rects.items():
+            if modal is not None and not _under(self.engine.program, nid, modal):
+                continue                      # 模态阻断：只在其子树内命中
             if (rect["x"] <= x < rect["x"] + rect["width"]
                     and rect["y"] <= y < rect["y"] + rect["height"]):
                 if best is None or rect["width"] * rect["height"] <= \

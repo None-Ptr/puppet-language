@@ -8,12 +8,14 @@ from .capabilities import capability, contract_of, load_capability_module
 from .diag import Diagnostic, ERROR, INFO, WARNING
 from .engine import Engine
 from .ir import Program, new_program, validate
+from .serialize import program_lines, program_source
 
-SPEC_VERSION = "2.0"
+SPEC_VERSION = "2.1"
 
 __all__ = [
     "Diagnostic", "ERROR", "INFO", "WARNING",
     "Engine", "Program", "new_program", "validate",
     "capability", "contract_of", "load_capability_module",
+    "program_lines", "program_source",
     "SPEC_VERSION",
 ]

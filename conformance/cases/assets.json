@@ -1,0 +1,84 @@
+[
+  {
+    "id": "as-remote-rejected",
+    "title": "远程资源地址被拒绝：只允许资源目录内的相对路径",
+    "spec": "04-vocabulary.md 第 3.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win image #pic src=\"https://example.com/a.png\""
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "ASSET_REMOTE", "level": "error" }],
+      "note": "远程会引入网络依赖、隐私与一整套失败模式；禁用比“允许但不定义失败语义”诚实"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#pic"] } }
+    ]
+  },
+  {
+    "id": "as-missing",
+    "title": "本地资源不存在 → 错误（提供资源根时静态校验）",
+    "spec": "04-vocabulary.md 第 3.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win image #pic src=\"nope.png\""
+    ],
+    "assetsDir": "fixtures/assets",
+    "loadExpect": {
+      "diagnostics": [{ "code": "ASSET_MISSING", "level": "error" }],
+      "note": "引用断裂：程序能装载，但那处资源永远显示不出来——属“静默的无效”"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#pic"] } }
+    ]
+  },
+  {
+    "id": "as-local-ok",
+    "title": "本地资源存在 → 无诊断",
+    "spec": "04-vocabulary.md 第 3.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win image #pic src=\"logo.svg\""
+    ],
+    "assetsDir": "fixtures/assets",
+    "loadExpect": {
+      "noDiagnostics": true
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#pic"] } }
+    ]
+  },
+  {
+    "id": "as-avatar-accepts-src",
+    "title": "avatar 的 src 走同一套规则（头像与图片的失败可见性一致）",
+    "spec": "04-vocabulary.md 第 3.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win avatar #me src=\"logo.svg\""
+    ],
+    "assetsDir": "fixtures/assets",
+    "loadExpect": {
+      "noDiagnostics": true,
+      "note": "同一属性、同一规则：不做“头像宽容、图片严格”的分裂"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#me"] } }
+    ]
+  },
+  {
+    "id": "as-without-root-skips-existence",
+    "title": "未提供资源根时跳过存在性校验（不做无依据的判断）",
+    "spec": "04-vocabulary.md 第 3.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win image #pic src=\"whatever.png\""
+    ],
+    "loadExpect": {
+      "forbid": ["ASSET_MISSING"],
+      "note": "语言实现无从知道 app 在哪：没有资源根就不猜，只做禁远程与形式检查"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#pic"] } }
+    ]
+  }
+]

@@ -1,0 +1,80 @@
+[
+  {
+    "id": "fc-uncovered-failure",
+    "title": "处理器里的调用失败无人处理 → 警告（与 UNCOVERED_INTERACTION 同源）",
+    "spec": "06-diagnostics.md 第 4.8 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"跑\"",
+      "data #res = {} of {text: str = \"\", length: int = 0}",
+      "on #b click: call echo_upper with {text: \"hi\"} into #res"
+    ],
+    "capabilityModules": ["fixtures/capabilities_basic.py"],
+    "loadExpect": {
+      "diagnostics": [{ "code": "UNCOVERED_FAILURE", "level": "warning" }],
+      "note": "用户点了按钮，而调用失败在界面上不会有任何可感知的变化——必须被说出来"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#b"] } }
+    ]
+  },
+  {
+    "id": "fc-covered-failure",
+    "title": "调用失败有处理器 → 不再警告",
+    "spec": "06-diagnostics.md 第 4.8 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"跑\"",
+      "add #win text #s text=\"就绪\"",
+      "data #res = {} of {text: str = \"\", length: int = 0}",
+      "on #b click: call echo_upper with {text: \"hi\"} into #res",
+      "on #res error: set #s text=\"出错了\""
+    ],
+    "capabilityModules": ["fixtures/capabilities_basic.py"],
+    "loadExpect": {
+      "forbid": ["UNCOVERED_FAILURE"],
+      "note": "失败有处理器 → 失败会在界面上有反应，不是静默失败"
+    },
+    "steps": [
+      { "expect": { "attrs": { "#s.text": "就绪" } } }
+    ]
+  },
+  {
+    "id": "fc-timeout-counts-as-handled",
+    "title": "只订阅 timeout 也算有人管（失败路径覆盖任一即可）",
+    "spec": "06-diagnostics.md 第 4.8 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"跑\"",
+      "data #res = {} of {text: str = \"\", length: int = 0}",
+      "on #b click: call echo_upper with {text: \"hi\"} into #res",
+      "listen #res timeout"
+    ],
+    "capabilityModules": ["fixtures/capabilities_basic.py"],
+    "loadExpect": {
+      "forbid": ["UNCOVERED_FAILURE"],
+      "note": "被订阅也算有人管——外部驱动者会响应，不属静默失败"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#b"] } }
+    ]
+  },
+  {
+    "id": "fc-toplevel-not-flagged",
+    "title": "顶层 call 由驱动者触发 → 不属界面静默，不警告",
+    "spec": "06-diagnostics.md 第 4.8 节",
+    "program": [
+      "add #root window #win",
+      "data #res = {} of {text: str = \"\", length: int = 0}",
+      "call echo_upper with {text: \"hi\"} into #res"
+    ],
+    "capabilityModules": ["fixtures/capabilities_basic.py"],
+    "loadExpect": {
+      "forbid": ["UNCOVERED_FAILURE"],
+      "note": "顶层 call 是驱动者触发的动作：失败诊断进观察流给驱动者看，不构成界面静默"
+    },
+    "steps": [
+      { "expect": { "slots": { "#res": { "status": "done" } } } }
+    ]
+  }
+]

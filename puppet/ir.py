@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -254,7 +255,7 @@ def _unknown_attr(name: str, line: int) -> Diagnostic:
 
 # ------------------------------------------------------------------ 校验
 
-def validate(program: Program) -> List[Diagnostic]:
+def validate(program: Program, assets_root: Optional[str] = None) -> List[Diagnostic]:
     diags: List[Diagnostic] = []
     used_templates = set()
 
@@ -282,6 +283,7 @@ def validate(program: Program) -> List[Diagnostic]:
                                             line=node.line))
                 elif isinstance(expr, Ref) and expr.field is None:
                     used_templates.add(expr.addr)
+                    diags += _check_ref_target(program, name, expr.addr, node.line)
             if name == "icon" and isinstance(expr, Lit) and isinstance(expr.value, str):
                 if expr.value not in vocab.CORE_ICONS:
                     guess = vocab.suggest_from(expr.value, vocab.CORE_ICONS)
@@ -300,8 +302,49 @@ def validate(program: Program) -> List[Diagnostic]:
 
     diags += _check_handlers(program)
     diags += _check_interaction_coverage(program)
+    diags += _check_failure_coverage(program)
     diags += _check_controlled_writeback(program)
     diags += _check_bindings(program)
+    diags += _check_assets(program, assets_root)
+    return diags
+
+
+REMOTE_PREFIXES = ("http://", "https://", "//")
+
+
+def _check_assets(program: Program, assets_root: Optional[str]) -> List[Diagnostic]:
+    """资源引用（`src`）：只允许本地资源；本地缺失必须可见。
+
+    - **禁用远程地址**：它会引入网络依赖、隐私问题与一整套失败模式（超时 / 重试 /
+      缓存 / 部分加载），而"可离线搭建"是真实需求。**禁用比"允许但不定义失败语义"诚实。**
+    - **本地缺失**：这是"引用断裂"，与 `REF_MISSING` 同理——程序能装载，但那处资源
+      永远显示不出来。存在性校验需要**资源根目录**（语言实现无从知道 app 在哪），
+      故由调用方传入；不传则**跳过**该项校验（仅做禁用远程与形式检查）。
+    """
+    diags: List[Diagnostic] = []
+    for node in program.nodes.values():
+        expr = node.attrs.get("src")
+        if not isinstance(expr, Lit) or not isinstance(expr.value, str):
+            continue                    # 值类属性可写表达式：运行期才知道，渲染器负责可见降级
+        value = expr.value.strip()
+        if not value:
+            continue
+        if value.startswith(REMOTE_PREFIXES):
+            diags.append(Diagnostic(
+                "ASSET_REMOTE", ERROR,
+                "资源地址不支持远程：%s（只允许资源目录内的相对路径）" % value,
+                line=node.line))
+            continue
+        if os.path.isabs(value) or "://" in value:
+            diags.append(Diagnostic(
+                "ASSET_REMOTE", ERROR,
+                "资源地址必须是资源目录内的相对路径：%s" % value, line=node.line))
+            continue
+        if assets_root:
+            if not os.path.isfile(os.path.join(assets_root, value)):
+                diags.append(Diagnostic(
+                    "ASSET_MISSING", ERROR,
+                    "资源 %s 不存在于资源目录" % value, line=node.line))
     return diags
 
 
@@ -399,6 +442,35 @@ def _owning_template(program: Program, node_id: str):
     return None
 
 
+def _check_ref_target(program: Program, attr: str, addr: str, line: int) -> List[Diagnostic]:
+    """引用类属性的目标必须存在、且类型正确。
+
+    这是"目标不存在"家族里的**引用断裂**一档：程序能装载，但该属性永远不会生效
+    ——一种**静默的无效**，必须被说出来。`source` / `options` 必须指向数据源，
+    `template` 必须指向模板节点。
+    """
+    node = program.nodes.get(addr)
+    is_data = addr in program.data
+    if attr == "template":
+        if node is None:
+            return [Diagnostic("REF_MISSING", ERROR,
+                               "模板 %s 不存在" % _hash(addr), line=line)]
+        if node.type != "template":
+            return [Diagnostic("REF_KIND", ERROR,
+                               "template 应指向模板节点，而 %s 是 %s"
+                               % (_hash(addr), node.type), line=line)]
+        return []
+    # `source` / `options`：必须指向数据源
+    if is_data:
+        return []
+    if node is not None:
+        return [Diagnostic("REF_KIND", ERROR,
+                           "%s 应指向数据源，而 %s 是节点（%s）"
+                           % (attr, _hash(addr), node.type), line=line)]
+    return [Diagnostic("REF_MISSING", ERROR,
+                       "%s 指向的数据源 %s 不存在" % (attr, _hash(addr)), line=line)]
+
+
 def _check_interaction_coverage(program: Program) -> List[Diagnostic]:
     """主交互事件没有任何处理器 → 警告。
 
@@ -424,6 +496,50 @@ def _check_interaction_coverage(program: Program) -> List[Diagnostic]:
             "UNCOVERED_INTERACTION", WARNING,
             "%s #%s 的 %s 既没有处理器也没有被订阅：用户操作它不会有任何反应"
             % (node.type, node.id, event), line=node.line))
+    return diags
+
+
+def _failure_targets(program: Program) -> List[tuple]:
+    """**处理器动作里**所有 `call` 的槽地址，带行号。
+
+    只统计**用户触发**的调用（`on … : call …`）。顶层 `call` 是**驱动者触发**的
+    动作（写在顶层即"由驱动者触发"），它的失败诊断进观察流、驱动者看得到，
+    不构成"界面静默"，故不在本检查范围内。
+    """
+    found: List[tuple] = []
+    for handler in program.handlers:
+        for action in handler.actions:
+            if action.kind == "call" and action.into:
+                found.append((action.into, handler.line))
+    return found
+
+
+def _check_failure_coverage(program: Program) -> List[Diagnostic]:
+    """能力的失败路径（`error` / `timeout`）没有任何处理器或订阅 → 警告。
+
+    与 `UNCOVERED_INTERACTION` **同源**：那条管"用户点了没人接"，这条管"用户点了、
+    但调用失败而没人接"——两者的判据相同：**用户操作了，而界面上不会发生任何可感知的变化**。
+
+    为什么不能只靠 `SLOT_TIMEOUT` 一类诊断：那些进的是**观察流**，是驾驶舱的通道；
+    造出来的 app 的**使用者看不到**。界面反馈必须在界面里。
+    """
+    diags: List[Diagnostic] = []
+    covered = {(h.target, h.event) for h in program.handlers}
+    watched = {(l.target, l.event) for l in program.listens}
+    failure_events = ("error", "timeout")
+    seen = set()
+    for slot, line in _failure_targets(program):
+        if not slot or slot in seen:
+            continue
+        seen.add(slot)
+        # 被订阅也算"有人管"：外部驱动者会响应，不属静默失败
+        if any((slot, ev) in covered or (slot, ev) in watched
+               for ev in failure_events):
+            continue
+        diags.append(Diagnostic(
+            "UNCOVERED_FAILURE", WARNING,
+            "槽 %s 的调用失败（error / timeout）既没有处理器也没有被订阅："
+            "失败在界面上不会有任何可感知的变化" % _hash(slot), line=line))
     return diags
 
 

@@ -1,0 +1,76 @@
+[
+  {
+    "id": "rf-source-missing",
+    "title": "source 指向不存在的数据源 → 错误（引用断裂）",
+    "spec": "06-diagnostics.md 第 4.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win list #lst source=#nope template=#row",
+      "add #win template #row as r",
+      "add #row text #l text=r.text"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "REF_MISSING", "level": "error" }],
+      "note": "程序能装载，但该属性永远不会生效——静默的无效必须被说出来"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#lst", "#row", "#l"] } }
+    ]
+  },
+  {
+    "id": "rf-template-missing",
+    "title": "template 指向不存在的地址 → 错误（引用断裂）",
+    "spec": "06-diagnostics.md 第 4.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win list #lst template=#ghost",
+      "data #todos = [] of {text: str}",
+      "set #lst source=#todos"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "REF_MISSING", "level": "error" }],
+      "note": "模板不存在：这一行永远渲染不出任何东西"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#lst"] } }
+    ]
+  },
+  {
+    "id": "rf-source-is-node",
+    "title": "source 指向节点而非数据源 → 类型不符（REF_KIND）",
+    "spec": "06-diagnostics.md 第 4.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #box",
+      "add #win list #lst source=#box template=#row",
+      "add #win template #row as r",
+      "add #row text #l text=r.text"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "REF_KIND", "level": "error" }],
+      "note": "目标存在但类型不对：不算\"断裂\"，是\"接错了线\"——两者要能区分"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#box", "#lst", "#row", "#l"] } }
+    ]
+  },
+  {
+    "id": "rf-template-is-not-template",
+    "title": "template 指向普通节点 → 类型不符（REF_KIND）",
+    "spec": "06-diagnostics.md 第 4.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #box",
+      "add #win list #lst template=#box",
+      "data #todos = [] of {text: str}",
+      "set #lst source=#todos"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "REF_KIND", "level": "error" }],
+      "note": "col 不是模板节点，不能当行模板用"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#box", "#lst"] } }
+    ]
+  }
+]

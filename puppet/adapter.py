@@ -47,6 +47,7 @@ def handle(engine: Engine, request: dict) -> dict:
             render_geometry=request.get("renderGeometry"),
             rendering=request.get("rendering"),
             capability_modules=request.get("capabilityModules"),
+            assets_dir=request.get("assetsDir"),
         )
         return {"diagnostics": [d.to_dict() for d in diags]}
     if op == "send":
@@ -61,6 +62,9 @@ def handle(engine: Engine, request: dict) -> dict:
         return {"diagnostics": [d.to_dict() for d in diags]}
     if op == "observe":
         return engine.observe()
+    if op == "dump":
+        # 真源写回 / 往返验证：把当前程序打印成源文本行。
+        return {"program": engine.program_lines()}
     if op == "interact":
         return engine.deliver_interaction(request.get("target", ""),
                                           request.get("action", ""),

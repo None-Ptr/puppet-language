@@ -11,16 +11,23 @@
 ```
 conformance/
 ├── README.md
-├── runner.py            # 零依赖运行器
+├── runner.py                # 零依赖运行器
+├── fixtures/                # 能力替身、资源文件
 └── cases/
-    ├── grammar.json     # 词法与语法
-    ├── binding.json     # 校验、绑定、传播
-    ├── platform.json    # 能力、槽、持久化、收敛
-    ├── probes.json      # 探针（tree / get / where）
-    ├── templates.json   # 模板与行上下文
-    ├── listen.json      # 订阅事件
-    ├── interaction.json # 交互覆盖
-    └── render.json      # 渲染：几何关系 / 能力声明 oracle / 可见降级
+    ├── grammar.json         # 词法与语法
+    ├── binding.json         # 校验、绑定、传播
+    ├── capabilities.json    # 能力加载与真实执行
+    ├── platform.json        # 能力、槽、持久化、收敛
+    ├── probes.json          # 探针（tree / get / where）
+    ├── templates.json       # 模板与行上下文
+    ├── listen.json          # 订阅事件
+    ├── interaction.json     # 交互覆盖
+    ├── failure-coverage.json# 失败路径覆盖（UNCOVERED_FAILURE）
+    ├── ref-targets.json     # 引用类属性的目标（REF_MISSING / REF_KIND）
+    ├── assets.json          # 资源引用（禁远程 / 缺失可见）
+    ├── dialog.json          # 模态对话框（铺满 / 层叠 / 阻断下层交互 / 未声明即降级）
+    ├── render.json          # 渲染：几何关系 / 能力声明 oracle / 可见降级
+    └── roundtrip.json       # 真源写回往返（批 → 打印 → 重载 → 行为等价）
 ```
 
 ## 3. 运行
@@ -40,7 +47,9 @@ python conformance/runner.py --impl "..." --filter b-cycle
 
 运行器在每步之后会轮询 `observe`，直到该步的期望满足或达到等待上限（默认 3 秒）。因此像"槽超时"这类异步用例**不需要**额外的同步手段。
 
-每步的期望只针对**该步**（`send` / `fire` / `restart` / `snapshot`）产生的诊断；装载期诊断用 `loadExpect` 断言。
+每步的期望只针对**该步**（`send` / `fire` / `interact` / `restart` / `snapshot` / `roundtrip`）产生的诊断；装载期诊断用 `loadExpect` 断言。
+
+`roundtrip` 是**真源写回**的协议级验证：驱动者先发 `dump` 取出当前程序的源文本，再原样 `load` 回去，随后照常断言——**同一套断言必须仍然成立**。它验证的是"命令批 → 打印 → 源文本 → 重载 → 行为等价"这条链；装载参数与初始 `load` 完全一致，使唯一的变化就是"经了一轮打印与重解析"。
 
 ## 4. 实现协议
 
@@ -51,10 +60,11 @@ python conformance/runner.py --impl "..." --filter b-cycle
 | 请求 | 字段 | 期望响应 |
 |---|---|---|
 | `hello` | — | `{"protocol": "...", "rendering": {…}}`（见 4.1.1） |
-| `load` | `program`（字符串数组）、`capabilities`（数组，可选）、`capabilityModules`（字符串数组，可选）、`limits`（对象，可选）、`seedState`（对象，可选）、`renderGeometry`（对象，可选） | `{"diagnostics": [...]}` |
+| `load` | `program`（字符串数组）、`capabilities`（数组，可选）、`capabilityModules`（字符串数组，可选）、`limits`（对象，可选）、`seedState`（对象，可选）、`renderGeometry`（对象，可选）、`rendering`（对象，可选）、`assetsDir`（字符串，可选：资源根目录，提供时校验 `src` 指向的文件存在） | `{"diagnostics": [...]}` |
 | `send` | `batch`（字符串数组） | `{"diagnostics": [...]}` |
 | `fire` | `target`（地址）、`event`（事件名）、`row`（行序号，可选）、`value`（新值，可选） | `{"diagnostics": [...]}` |
 | `observe` | — | 见 4.3 |
+| `dump` | — | `{"program": [<源文本行>…]}`：当前程序的源文本（**真源写回**与**往返验证**用；只读程序 IR，绝不掺入运行期状态） |
 | `interact` | `target`（地址）、`action`（`click`/`change`/`submit`/`focus`/`blur`）、`value`（新值，可选） | `{"delivered": 布尔, "diagnostics": [...]}` |
 | `snapshot` | — | `{"image": <base64 或 null>, "format": "png"}`（见 4.1.3） |
 | `restart` | — | `{"diagnostics": [...]}` |

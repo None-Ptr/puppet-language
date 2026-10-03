@@ -21,6 +21,7 @@ from .ir import (ROOT, Program, ancestors_of, apply_stmt, in_template, new_progr
                  validate)
 from .lang import (ActionStmt, Add, CallStmt, Del, Expr, Lit, Move, On, Probe,
                    Ref, SetStmt, Stmt, is_static, parse_program)
+from .serialize import program_lines as _program_lines
 from . import vocab
 
 STATE_FLAGS = vocab.STATE_FLAGS
@@ -152,6 +153,8 @@ class Engine:
         self.flags: Dict[str, Dict[str, bool]] = {}
         self.capabilities: Dict[str, dict] = {}
         self.limits: Dict[str, Any] = {"callTimeoutMs": 5000}
+        # 资源根目录（可选）：提供时校验 `src` 指向的文件确实存在。
+        self.assets_dir: Optional[str] = None
         self.pending: List[Diagnostic] = []
         self.events: List[dict] = []
         self.probes: List[dict] = []
@@ -165,6 +168,8 @@ class Engine:
         self.render_geometry: Dict[str, dict] = {}
         # 能力声明（渲染契约第 1 节）：渲染器支持哪些词汇。None = 全部标准。
         self.rendering = self._merge_rendering(rendering)
+        # 构造时的声明即**基线**：每个批次都从它出发，替身只在本次生效。
+        self._rendering_base = dict(self.rendering)
 
     # ------------------------------------------------------------ 能力声明
 
@@ -236,7 +241,7 @@ class Engine:
 
     def load(self, lines, capabilities=None, limits=None, seed_state=None,
              render_geometry=None, rendering=None,
-             capability_modules=None) -> List[Diagnostic]:
+             capability_modules=None, assets_dir=None) -> List[Diagnostic]:
         with self.lock:
             self.program = new_program()
             self.items = {}
@@ -249,7 +254,14 @@ class Engine:
             self.probes = []
             self.subscriptions = set()
             self.render_geometry = dict(render_geometry or {})
-            self.rendering = self._merge_rendering(rendering)
+            # `load.rendering` 是**替身**，不是"实现声明的唯一来源"：每个批次从
+            # **构造时的基线**出发，替身只在本批生效。两个坑都要避开：
+            # ① 不传时若重置成"支持全部"，渲染器的子集声明被抹掉 → 降级再也不产生；
+            # ② 不传时若沿用上一批的值，上一条用例的替身会**泄漏**到下一条。
+            merged: Dict[str, Any] = dict(self._rendering_base)
+            if rendering is not None:
+                merged.update(rendering)
+            self.rendering = merged
             self.capabilities = {c["name"]: c for c in (capabilities or [])}
             self.limits = {"callTimeoutMs": 5000}
             self.limits.update(limits or {})
@@ -281,7 +293,8 @@ class Engine:
                     self._split_flag_set(stmt, diags)
                 changed += apply_stmt(self.program, stmt, diags)
             self._refresh_subscriptions()
-            diags += validate(self.program)
+            self.assets_dir = assets_dir
+            diags += validate(self.program, self.assets_dir)
             diags += self._rendering_degradations()
             if not seed_state and not stored_items and any(
                     src.persist for src in self.program.data.values()):
@@ -324,7 +337,7 @@ class Engine:
                     self._split_flag_set(stmt, diags, ctx)
                 changed += apply_stmt(self.program, stmt, diags)
             self._refresh_subscriptions()
-            diags += validate(self.program)
+            diags += validate(self.program, self.assets_dir)
             diags += self._rendering_degradations()
             diags += self._cascade(changed)
             diags += self._propagate()
@@ -984,6 +997,14 @@ class Engine:
                             "target": ("#" + target) if target else "",
                             "result": result})
         self.queue(diags)
+
+    def program_lines(self) -> List[str]:
+        """当前程序 → 源文本行（真源写回 / 往返验证）。
+
+        只读程序 IR——绝不掺入运行期状态（`spec/02-ir.md` 的不变式）。
+        """
+        with self.lock:
+            return _program_lines(self.program)
 
     def snapshot(self) -> dict:
         """视觉快照（可选观察面，仅供驱动者自检）。

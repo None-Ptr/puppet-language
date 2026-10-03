@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 NODE_TYPES = (
-    "window", "col", "row", "navbar", "list", "tabs", "template",
+    "window", "dialog", "col", "row", "navbar", "list", "tabs", "template",
     "text", "icon", "divider", "spacer", "progress", "image", "avatar",
     "button", "input", "checkbox", "switch", "slider", "dropdown",
 )
