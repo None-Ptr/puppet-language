@@ -9,7 +9,7 @@ from .diag import Diagnostic, ERROR, INFO, WARNING
 from .engine import Engine
 from .ir import Program, new_program, validate
 
-SPEC_VERSION = "2.0-draft"
+SPEC_VERSION = "2.0"
 
 __all__ = [
     "Diagnostic", "ERROR", "INFO", "WARNING",
