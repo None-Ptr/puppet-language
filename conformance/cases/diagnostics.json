@@ -1,0 +1,54 @@
+[
+  {
+    "id": "dg-repeat-across-batches",
+    "title": "同一个错误在两批里重复出现，仍然报告——否则重复失败会变成假成功",
+    "spec": "06-diagnostics.md 第 3 节",
+    "program": [
+      "add #root window #win"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["set #ghost text=\"x\""],
+        "expect": { "diagnostics": [{ "code": "TARGET_MISSING", "level": "error" }] }
+      },
+      {
+        "send": ["set #ghost text=\"y\""],
+        "expect": { "diagnostics": [{ "code": "TARGET_MISSING", "level": "error" }] }
+      }
+    ]
+  },
+  {
+    "id": "dg-load-diag-not-repeated",
+    "title": "装载期的静态诊断不随每一批重报（否则诊断流被同一条消息淹没）",
+    "spec": "06-diagnostics.md 第 3 节",
+    "program": [
+      "add #root window #win",
+      "add #win text #t text=\"x\" nope=1"
+    ],
+    "loadExpect": { "diagnostics": [{ "code": "UNKNOWN_ATTR", "level": "warning" }] },
+    "steps": [
+      { "send": ["add #win text #t2 text=\"y\""], "expect": { "noDiagnostics": true } },
+      { "send": ["add #win text #t3 text=\"z\""], "expect": { "noDiagnostics": true } }
+    ]
+  },
+  {
+    "id": "dg-batch-diag-visible-after-load",
+    "title": "本批新建的引用断裂在下一批仍然可见（诊断要反映程序的当前状态）",
+    "spec": "06-diagnostics.md 第 3 节",
+    "program": [
+      "add #root window #win"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["add #win text #t text=\"x\" source=#nope"],
+        "expect": { "diagnostics": [{ "code": "ATTR_ON_TYPE", "level": "warning" }] }
+      },
+      {
+        "send": ["add #win text #t2 text=\"y\""],
+        "expect": { "diagnostics": [{ "code": "ATTR_ON_TYPE", "level": "warning" }] }
+      }
+    ]
+  }
+]

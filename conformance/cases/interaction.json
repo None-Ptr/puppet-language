@@ -8,10 +8,21 @@
       "add #win button #b text=\"x\""
     ],
     "loadExpect": {
-      "diagnostics": [{ "code": "UNCOVERED_INTERACTION", "level": "warning" }]
+      "diagnostics": [
+        {
+          "code": "UNCOVERED_INTERACTION",
+          "level": "warning"
+        }
+      ]
     },
     "steps": [
-      { "expect": { "nodes": ["#b"] } }
+      {
+        "expect": {
+          "nodes": [
+            "#b"
+          ]
+        }
+      }
     ]
   },
   {
@@ -23,11 +34,20 @@
       "add #win button #b text=\"x\"",
       "on #b click: set #b text=\"hit\""
     ],
-    "loadExpect": { "noDiagnostics": true },
+    "loadExpect": {
+      "noDiagnostics": true
+    },
     "steps": [
       {
-        "fire": { "target": "#b", "event": "click" },
-        "expect": { "attrs": { "#b.text": "hit" } }
+        "fire": {
+          "target": "#b",
+          "event": "click"
+        },
+        "expect": {
+          "attrs": {
+            "#b.text": "hit"
+          }
+        }
       }
     ]
   },
@@ -39,9 +59,17 @@
       "add #root window #win",
       "add #win input #q placeholder=\"搜索\""
     ],
-    "loadExpect": { "noDiagnostics": true },
+    "loadExpect": {
+      "noDiagnostics": true
+    },
     "steps": [
-      { "expect": { "nodes": ["#q"] } }
+      {
+        "expect": {
+          "nodes": [
+            "#q"
+          ]
+        }
+      }
     ]
   },
   {
@@ -56,10 +84,21 @@
       "data #todos = [] of {done: bool = false}"
     ],
     "loadExpect": {
-      "diagnostics": [{ "code": "UNCOVERED_INTERACTION", "level": "warning" }]
+      "diagnostics": [
+        {
+          "code": "UNCOVERED_INTERACTION",
+          "level": "warning"
+        }
+      ]
     },
     "steps": [
-      { "expect": { "nodes": ["#done"] } }
+      {
+        "expect": {
+          "nodes": [
+            "#done"
+          ]
+        }
+      }
     ]
   },
   {
@@ -76,19 +115,60 @@
       "data #todos = [] of {text: str = \"\", done: bool = false}",
       "on #done change as e: update_where #todos as r set done=e.value where r.text == t.text"
     ],
-    "loadExpect": { "noDiagnostics": true },
+    "loadExpect": {
+      "noDiagnostics": true
+    },
     "steps": [
       {
-        "send": ["append #todos item={text: \"a\", done: false}"],
-        "expect": { "data": { "#todos": [{ "text": "a", "done": false }] } }
+        "send": [
+          "append #todos item={text: \"a\", done: false}"
+        ],
+        "expect": {
+          "data": {
+            "#todos": [
+              {
+                "text": "a",
+                "done": false
+              }
+            ]
+          }
+        }
       },
       {
-        "fire": { "target": "#done", "event": "change", "row": 0, "value": true },
-        "expect": { "data": { "#todos": [{ "text": "a", "done": true }] } }
+        "fire": {
+          "target": "#done",
+          "event": "change",
+          "row": 0,
+          "value": true
+        },
+        "expect": {
+          "data": {
+            "#todos": [
+              {
+                "text": "a",
+                "done": true
+              }
+            ]
+          }
+        }
       },
       {
-        "fire": { "target": "#done", "event": "change", "row": 0, "value": false },
-        "expect": { "data": { "#todos": [{ "text": "a", "done": false }] } }
+        "fire": {
+          "target": "#done",
+          "event": "change",
+          "row": 0,
+          "value": false
+        },
+        "expect": {
+          "data": {
+            "#todos": [
+              {
+                "text": "a",
+                "done": false
+              }
+            ]
+          }
+        }
       }
     ]
   },
@@ -105,19 +185,60 @@
       "data #todos = [] of {text: str = \"\", done: bool = false}",
       "on #done change as e: update_where #todos as r set done=e.value where r.text == t.text"
     ],
-    "loadExpect": { "noDiagnostics": true },
+    "loadExpect": {
+      "noDiagnostics": true
+    },
     "steps": [
       {
-        "send": ["append #todos item={text: \"a\", done: false}"],
-        "expect": { "data": { "#todos": [{ "text": "a", "done": false }] } }
+        "send": [
+          "append #todos item={text: \"a\", done: false}"
+        ],
+        "expect": {
+          "data": {
+            "#todos": [
+              {
+                "text": "a",
+                "done": false
+              }
+            ]
+          }
+        }
       },
       {
-        "fire": { "target": "#done", "event": "change", "row": 0, "value": true },
-        "expect": { "data": { "#todos": [{ "text": "a", "done": true }] } }
+        "fire": {
+          "target": "#done",
+          "event": "change",
+          "row": 0,
+          "value": true
+        },
+        "expect": {
+          "data": {
+            "#todos": [
+              {
+                "text": "a",
+                "done": true
+              }
+            ]
+          }
+        }
       },
       {
-        "fire": { "target": "#done", "event": "change", "row": 0, "value": true },
-        "expect": { "data": { "#todos": [{ "text": "a", "done": true }] } }
+        "fire": {
+          "target": "#done",
+          "event": "change",
+          "row": 0,
+          "value": true
+        },
+        "expect": {
+          "data": {
+            "#todos": [
+              {
+                "text": "a",
+                "done": true
+              }
+            ]
+          }
+        }
       }
     ]
   },
@@ -135,10 +256,21 @@
       "on #done change as e: set #echo text=str(e.value)"
     ],
     "loadExpect": {
-      "diagnostics": [{ "code": "BOUND_VALUE_NOT_WRITTEN", "level": "warning" }]
+      "diagnostics": [
+        {
+          "code": "BOUND_VALUE_NOT_WRITTEN",
+          "level": "warning"
+        }
+      ]
     },
     "steps": [
-      { "expect": { "nodes": ["#done"] } }
+      {
+        "expect": {
+          "nodes": [
+            "#done"
+          ]
+        }
+      }
     ]
   },
   {
@@ -152,13 +284,27 @@
       "listen #q change",
       "on #q change as e: set #n text=e.value"
     ],
-    "loadExpect": { "noDiagnostics": true },
+    "loadExpect": {
+      "noDiagnostics": true
+    },
     "steps": [
       {
-        "fire": { "target": "#q", "event": "change", "value": "abc" },
+        "fire": {
+          "target": "#q",
+          "event": "change",
+          "value": "abc"
+        },
         "expect": {
-          "events": [{ "target": "#q", "event": "change", "value": "abc" }],
-          "attrs": { "#n.text": "abc" }
+          "events": [
+            {
+              "target": "#q",
+              "event": "change",
+              "value": "abc"
+            }
+          ],
+          "attrs": {
+            "#n.text": "abc"
+          }
         }
       }
     ]
@@ -167,18 +313,29 @@
     "id": "ir-click-via-renderer",
     "title": "点击经渲染器投递为 click 事件并触发处理器（可观察触发条件）",
     "spec": "05-render-contract.md 第 4 节",
-    "requires": ["interaction"],
+    "requires": [
+      "interaction"
+    ],
     "program": [
       "add #root window #win",
       "add #win text #t text=\"\"",
       "add #win button #b text=\"点我\"",
       "on #b click: set #t text=\"clicked\""
     ],
-    "loadExpect": { "noDiagnostics": true },
+    "loadExpect": {
+      "noDiagnostics": true
+    },
     "steps": [
       {
-        "interact": { "target": "#b", "action": "click" },
-        "expect": { "attrs": { "#t.text": "clicked" } }
+        "interact": {
+          "target": "#b",
+          "action": "click"
+        },
+        "expect": {
+          "attrs": {
+            "#t.text": "clicked"
+          }
+        }
       }
     ]
   },
@@ -186,18 +343,34 @@
     "id": "ir-change-writeback-via-renderer",
     "title": "勾选经渲染器投递为 change，受控处理器回写数据源",
     "spec": "05-render-contract.md 第 4 节；03-semantics.md 第 2.8 节",
-    "requires": ["interaction"],
+    "requires": [
+      "interaction"
+    ],
     "program": [
       "add #root window #win",
       "data #n = [{v: false}] of {v: bool = false}",
       "add #win checkbox #c value=#n.v",
       "on #c change as e: update_where #n as r set v=e.value where r.v == false"
     ],
-    "loadExpect": { "noDiagnostics": true },
+    "loadExpect": {
+      "noDiagnostics": true
+    },
     "steps": [
       {
-        "interact": { "target": "#c", "action": "change", "value": true },
-        "expect": { "data": { "#n": [{ "v": true }] } }
+        "interact": {
+          "target": "#c",
+          "action": "change",
+          "value": true
+        },
+        "expect": {
+          "data": {
+            "#n": [
+              {
+                "v": true
+              }
+            ]
+          }
+        }
       }
     ]
   },
@@ -212,9 +385,61 @@
     ],
     "steps": [
       {
-        "interact": { "target": "#b", "action": "click" },
-        "expect": { "degraded": ["interaction"] }
+        "interact": {
+          "target": "#b",
+          "action": "click"
+        },
+        "expect": {
+          "degraded": [
+            "interaction"
+          ]
+        }
       }
+    ]
+  },
+  {
+    "id": "i-input-submit-payload",
+    "title": "input 的 submit 载荷携带新值（移动键盘完成键的语义）",
+    "spec": "01-grammar.md 第 7.7 节；04-vocabulary.md 第 5.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win col #content pad=16",
+      "data #todos = [] of {text: str}",
+      "add #content input #inp placeholder=\"新待办\"",
+      "on #inp submit as e:",
+      "    append #todos item={text: e.value} ; set #inp value=\"\""
+    ],
+    "loadExpect": {
+      "noDiagnostics": true
+    },
+    "steps": [
+      {
+        "interact": {
+          "target": "#inp",
+          "action": "submit",
+          "value": "买酱油"
+        },
+        "expect": {
+          "data": {
+            "#todos": [
+              {
+                "text": "买酱油"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "send": [
+          "where #inp"
+        ],
+        "expect": {
+          "diagnostics": []
+        }
+      }
+    ],
+    "requires": [
+      "interaction"
     ]
   }
 ]

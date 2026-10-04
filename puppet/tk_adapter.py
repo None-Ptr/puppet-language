@@ -40,6 +40,7 @@ RENDERING = {
     "snapshot": False,
     "interaction": True,
     "headless": False,
+    "pointer": "mouse",
     "notes": "Tk 参考渲染器：容器与窗口的 w/h 按像素实现；文本类控件按内容自尺寸；"
              "图标不做位图（一律降级）；未声明的词汇一律可见降级；"
              "用户动作经真实 Tk 事件投递为引擎事件。",
@@ -89,7 +90,7 @@ class TkRenderer:
         self.widgets = {}
         self.origin = None
         # 求值后的属性：渲染器必须反映**绑定值**，而不是源码里的字面量
-        self.values = self.engine._observe_attrs()
+        self.values = self.engine.render_state()["attrs"]
         program = self.engine.program
         root = program.nodes.get("root")
         if root is None:

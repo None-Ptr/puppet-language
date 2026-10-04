@@ -13,28 +13,10 @@ import subprocess
 import sys
 
 from . import SPEC_VERSION
+from .assets import assets_dir as _assets_dir
 from .engine import Engine
 from .ir import apply_stmt, new_program, validate
 from .lang import parse_program
-
-def _assets_dir() -> str:
-    """定位随发行包分发的 `spec/` 与 `conformance/`。
-
-    开发态（源码树 / `pip install -e`）：仓库根。
-    安装态：setuptools 的 data-files 落在 `<prefix>/share/puppet`。
-    可用环境变量 `PUPPET_ASSETS` 覆盖（下游打包可自行安置资产）。
-    """
-    override = os.environ.get("PUPPET_ASSETS")
-    if override:
-        return override
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if os.path.isdir(os.path.join(root, "spec")):
-        return root
-    installed = os.path.join(sys.prefix, "share", "puppet")
-    if os.path.isdir(os.path.join(installed, "spec")):
-        return installed
-    return root
-
 
 ROOT = _assets_dir()
 

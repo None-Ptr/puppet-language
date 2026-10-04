@@ -37,6 +37,7 @@ RENDERING = {
     "snapshot": True,
     "interaction": True,
     "headless": True,
+    "pointer": "mouse",
     "notes": "软件光栅参考渲染器：确定性堆叠布局 + 纯标准库 PNG 截图 + 命中测试交互；"
              "无需显示器。文本按内容带绘制（无字形栅格化），故像素级外观不在其能力内。",
 }
@@ -120,7 +121,7 @@ class RasterRenderer:
 
     def relayout(self) -> None:
         self.rects = {}
-        self.values = self.engine._observe_attrs()
+        self.values = self.engine.render_state()["attrs"]
         self.state = {}
         program = self.engine.program
         root = program.nodes.get("root")

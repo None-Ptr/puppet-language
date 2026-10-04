@@ -528,12 +528,19 @@ class Impl:
         用例；渲染用例会要求它对被请求的一切产生可见降级。
         """
         self.rendering = {}
+        self.pointer_bad = ""
         try:
             resp = self.request({"op": "hello"})
         except Exception:  # noqa: BLE001 - 握手失败不致命，视为未声明
             return self.rendering
         if isinstance(resp, dict):
             self.rendering = resp.get("rendering") or {}
+        # 宿主指针语义自述的**值域门**（05 第 10 节）：声明了就必须在值域里——
+        # 自述不合法与"声明支持却做不到"同罪，都是可见失败。
+        pointer = self.rendering.get("pointer", "mouse")
+        if pointer not in ("mouse", "touch"):
+            self.pointer_bad = ("hello.rendering.pointer = %r 不在值域 "
+                                "{mouse, touch}" % (pointer,))
         return self.rendering
 
     def request(self, payload):
@@ -711,6 +718,10 @@ def main(argv=None):
     impl = Impl(args.impl, cwd=os.path.dirname(HERE))
     failed = 0
     skipped = 0
+    if getattr(impl, "pointer_bad", ""):
+        # 握手自述不合法是**实例级**失败：不占用例计数，但同样让整轮变红。
+        print("FAIL pointer  (宿主指针语义自述)")
+        print("      " + impl.pointer_bad)
     try:
         for name, case in selected:
             # 能力门槛：实现未声明的能力 → **可见跳过**（不是静默通过）
@@ -737,7 +748,7 @@ def main(argv=None):
 
     print("\n%d/%d 通过（跳过 %d）"
           % (len(selected) - failed - skipped, len(selected), skipped))
-    return 1 if failed else 0
+    return 1 if failed or getattr(impl, "pointer_bad", "") else 0
 
 
 if __name__ == "__main__":

@@ -4,10 +4,28 @@ __pycache__/
 build/
 dist/
 .venv*/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# 编辑器 / 操作系统杂项
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# CodeBuddy 会话数据（记忆 / 团队）不进仓
+.codebuddy/
 
 # 一次性调试 / 迁移脚本（不进仓）
 _debug*.py
 _migrate*.py
+_add_*.py
+check_*.py
 
-# 引擎写出的状态文件（若落在仓内）
+# 引擎写出的状态文件与 app 实例目录（若落在仓内）
 *.state.json
+.puppet/
+.puppethub/

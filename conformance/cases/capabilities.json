@@ -151,5 +151,83 @@
     "steps": [
       { "expect": { "slots": { "#res": { "status": "error" } } } }
     ]
+  },
+  {
+    "id": "p-cap-inflight-cancelled-on-load",
+    "title": "在途调用随装载作废：报告落在装载那一步，迟到结果不漂进后续步骤",
+    "spec": "03-semantics.md 第 4.3 节；06-diagnostics.md 第 3 节",
+    "capabilities": [
+      { "name": "slow", "params": [], "returns": "int",
+        "behavior": "delay", "delayMs": 1500 }
+    ],
+    "limits": { "callTimeoutMs": 8000 },
+    "program": [
+      "add #root window #win",
+      "add #win text #t text=\"x\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["call slow with {} into #res"],
+        "expect": {
+          "noDiagnostics": true,
+          "note": "调用挂起，还没有结果——此时不该有任何诊断"
+        }
+      },
+      {
+        "roundtrip": true,
+        "expect": {
+          "diagnostics": [{ "code": "SLOT_CANCELLED", "level": "info" }],
+          "note": "往返 = 一次装载：在途调用属于上一个生命周期，作废要在**这一步**报出来"
+        }
+      },
+      {
+        "expect": {
+          "noDiagnostics": true,
+          "note": "迟到结果不许再产生诊断——否则它会漂进这个无关的步骤，让诊断失去归属"
+        }
+      }
+    ]
+  },
+  {
+    "id": "p-cap-superseded-not-leaking",
+    "title": "被取代的调用：作废当场报出，旧调用的迟到结果不再报一条",
+    "spec": "03-semantics.md 第 4.3 节",
+    "limits": { "callTimeoutMs": 3000 },
+    "capabilities": [
+      { "name": "slow", "params": [], "returns": "str",
+        "behavior": "delay", "delayMs": 200 },
+      { "name": "slower", "params": [], "returns": "str",
+        "behavior": "delay", "delayMs": 700 }
+    ],
+    "program": [
+      "add #root window #win",
+      "data #res = [] of {v: str = \"\"}"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["call slow with {} into #res"],
+        "expect": {
+          "noDiagnostics": true,
+          "note": "调用在进行中：还没有结果，也没有诊断"
+        }
+      },
+      {
+        "send": ["call slower with {} into #res"],
+        "expect": {
+          "diagnostics": [{ "code": "SLOT_CANCELLED", "level": "info" }],
+          "forbid": ["SLOT_STALE_DROPPED"],
+          "note": "作废在**这一刻**报出（含槽地址），所以旧调用的迟到结果不必再报一次"
+        }
+      },
+      {
+        "expect": {
+          "slots": { "#res": { "status": "done" } },
+          "forbid": ["SLOT_STALE_DROPPED"],
+          "note": "等到新调用跑完（700ms）——旧调用早在那之前就返回了；它必须闭嘴，否则那条诊断会漂进当时正在跑的这一步，与这一步毫无关系"
+        }
+      }
+    ]
   }
 ]

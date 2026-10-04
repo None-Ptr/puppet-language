@@ -39,6 +39,9 @@ class Store:
 
     def write(self, payload: dict) -> None:
         with self.lock:
+            # 状态目录可能被外部清掉（宿主"重置状态"就是删掉它，人或脚本也可能删）。
+            # 状态是可丢、可从声明重建的，所以"目录没了"不该让引擎崩在持久化上。
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
             tmp = self.path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(payload, fh, ensure_ascii=False)
@@ -143,9 +146,14 @@ class _Ctx:
 class Engine:
     CASCADE_LIMIT = 32
 
-    def __init__(self, workdir: Optional[str] = None, rendering: Optional[dict] = None):
+    def __init__(self, workdir: Optional[str] = None, rendering: Optional[dict] = None,
+                 store: Optional[object] = None):
         self.workdir = workdir or tempfile.mkdtemp(prefix="puppet-state-")
-        self.store = Store(os.path.join(self.workdir, "state.json"))
+        # `store` 是宿主注入点：状态文件不必是本机文件（PuppetHub 把它接到 storage
+        # 插件上，让落盘走同一条通道）。缺省仍用自带 Store——引擎单独用时
+        # 不该知道宿主的存在。duck interface：read() -> dict · write(payload)。
+        self.store = store if store is not None else Store(
+            os.path.join(self.workdir, "state.json"))
         self.lock = threading.RLock()
         self.program = new_program()
         self.items: Dict[str, List[dict]] = {}
@@ -164,6 +172,8 @@ class Engine:
         self.revision = 0
         self._baseline: set = set()
         self._seq = 0
+        # 已被"生命周期边界"作废的槽序号：它们的迟到结果**不得**再产生诊断（见 `settle`）。
+        self._cancelled: set = set()
         # 几何测试替身（conformance 用）：地址 → 矩形。为空表示"本渲染器无几何"。
         self.render_geometry: Dict[str, dict] = {}
         # 能力声明（渲染契约第 1 节）：渲染器支持哪些词汇。None = 全部标准。
@@ -197,6 +207,11 @@ class Engine:
         icons = declared.get("icons")
         out: List[Diagnostic] = []
         for node in self.program.nodes.values():
+            # `root` 是**结构锚点**，不是词汇（`validate` 同样跳过它）。把非词汇节点算成
+            # "未声明支持"，会在**每一个**程序上产生一条假的降级诊断——诊断必须可信，
+            # 一条永远存在的假警告会把整条观察流训练成无人看。
+            if node.type not in vocab.NODE_TYPES:
+                continue
             if controls is not None and node.type not in controls:
                 out.append(Diagnostic(
                     "DEGRADED_FEATURE", INFO,
@@ -243,6 +258,7 @@ class Engine:
              render_geometry=None, rendering=None,
              capability_modules=None, assets_dir=None) -> List[Diagnostic]:
         with self.lock:
+            inflight = self._inflight_slots()
             self.program = new_program()
             self.items = {}
             self.slots = {}
@@ -275,6 +291,7 @@ class Engine:
             stored_items = (saved.get("items") or {}) if isinstance(saved, dict) else {}
 
             diags: List[Diagnostic] = []
+            self._cancel_inflight(inflight, diags, "装载")
             # 真实能力模块：与替身同一份契约形状；同名以真实模块为准
             for path in capability_modules or []:
                 contracts, cap_diags = load_capability_module(path)
@@ -336,6 +353,7 @@ class Engine:
                 if isinstance(stmt, SetStmt):
                     self._split_flag_set(stmt, diags, ctx)
                 changed += apply_stmt(self.program, stmt, diags)
+            self._seed_new_sources(diags)
             self._refresh_subscriptions()
             diags += validate(self.program, self.assets_dir)
             diags += self._rendering_degradations()
@@ -352,7 +370,9 @@ class Engine:
             diags: List[Diagnostic] = []
             if event in vocab.INTERACTION_EVENTS and self.flag(target, "disabled"):
                 return diags                      # 引擎层拦截（禁用节点不响应）
-            payload: dict = {"value": value} if event == "change" else {}
+            # 载荷：`change` 与 `submit` 都携带新值（04 词汇表：input 显式绑定 change
+            # **或 submit**——提交时读控件的值是正当写法，载荷不带给绑定就取不到）。
+            payload: dict = {"value": value} if event in ("change", "submit") else {}
             self._publish(target, event, row, value)   # 观察独立于反应
             row_name, row_value = self._row_context(target, row, diags)
             changed = self._dispatch(target, event, payload, diags,
@@ -373,6 +393,7 @@ class Engine:
             if not stored and any(src.persist for src in self.program.data.values()):
                 diags.append(Diagnostic("STATE_REBUILT", INFO,
                                         "没有可用的状态文件，持久数据从声明初值重建"))
+            self._cancel_inflight(self._inflight_slots(), diags, "重启")
             self.slots = {}
             self.flags = {}
             self._seed_items(stored, diags)
@@ -431,6 +452,30 @@ class Engine:
                 self.items[src.id] = self._initial_items(src)
         self._seed_flags()
 
+    def _seed_new_sources(self, diags: List[Diagnostic]) -> None:
+        """命令批里新声明的数据源也要按声明初值播种。
+
+        不做这件事，运行期新声明的数据源**永远是空的**——而"先声明数据、再挂界面"
+        正是改写程序时最常见的第一步（`apply_stmt` 对 `data` 只登记声明，
+        播种原本只发生在 `load` 里）。与装载期一致：播种不是"变化"，不触发级联。
+        """
+        stored: dict = {}
+        if any(src.persist for src in self.program.data.values()):
+            saved = self.store.read()
+            stored = (saved.get("items") or {}) if isinstance(saved, dict) else {}
+        for src in self.program.data.values():
+            if src.id in self.items:
+                continue
+            rows = stored.get("#" + src.id)
+            if src.persist and isinstance(rows, list):
+                self.items[src.id] = rows
+                diags += self._drift_diags(src, rows)
+            else:
+                self.items[src.id] = self._initial_items(src)
+                if src.persist:
+                    diags.append(Diagnostic("STATE_REBUILT", INFO,
+                                            "没有可用的状态文件，持久数据从声明初值重建"))
+
     def _drift_diags(self, src, rows: list) -> List[Diagnostic]:
         """结构漂移：不迁移、不删除，但必须说出来。"""
         extra = set()
@@ -482,12 +527,24 @@ class Engine:
         self.store.write(payload)
 
     def _new_only(self, diags: List[Diagnostic]) -> List[Diagnostic]:
+        """返回**本步新增**的诊断。
+
+        基线的含义是"**装载期**已经报过的静态诊断"，不随批次增长。两个反面都要避开：
+
+        * 若把批次诊断也塞进基线 → 同一个错误在后续批次里再次出现时被**静默抑制**，
+          LLM 会以为改动成功了。那是比崩溃更糟的假成功，直接违背"失败必须可见"。
+        * 若基线里什么都不放 → 装载期的静态诊断（如未知属性）会在**每一个**批次里重报，
+          诊断流被同一条消息淹没。
+
+        步内去重照旧（`seen`）：一条批可能对同一节点报同一条诊断多次。
+        """
         out = []
+        seen = set()
         for diag in diags:
             key = diag.key()
-            if key in self._baseline:
+            if key in self._baseline or key in seen:
                 continue
-            self._baseline.add(key)
+            seen.add(key)
             out.append(diag)
         return out
 
@@ -775,6 +832,11 @@ class Engine:
         seq = self._seq
         previous = self.slots.get(into)
         if previous and previous.get("status") == "pending":
+            # 作废已经在**这一刻**报出来了，所以旧调用的迟到结果**不再重复报**：
+            # 否则它会在几秒后（旧调用的超时定时器终于炸掉时）漂进当时正在跑的那一步，
+            # 让诊断失去归属。丢弃没有被静默——它就在下面这条里。
+            if previous.get("seq"):
+                self._cancelled.add(int(previous["seq"]))
             diags.append(Diagnostic("SLOT_CANCELLED", INFO,
                                     "槽 #%s 上正在进行的调用被新调用取消" % into))
             self._publish(into, "cancel")
@@ -784,6 +846,27 @@ class Engine:
         self._dispatch(into, "pending", {"status": "pending", "value": None}, diags)
         threading.Thread(target=self._run_capability,
                          args=(cap, args, into, seq), daemon=True).start()
+
+    def _inflight_slots(self) -> List[tuple]:
+        return [(into, int(rec.get("seq", 0)))
+                for into, rec in self.slots.items() if rec.get("status") == "pending"]
+
+    def _cancel_inflight(self, inflight: List[tuple], diags: List[Diagnostic],
+                         reason: str) -> None:
+        """生命周期边界上的作废：在途调用是**上一个生命周期**的事。
+
+        报告必须落在**那一步**（装载 / 重启）。否则它那条"陈旧结果被丢弃"会在一段时间后漂进
+        **无关的后续步骤**——在 conformance 里表现为"某个用例莫名期望无诊断，却拿到一条 info"。
+        跨用例污染比丢一条日志糟得多：它让诊断**失去归属**，而归属正是诊断可被行动的前提。
+        """
+        for into, seq in inflight:
+            self._cancelled.add(seq)
+            diags.append(Diagnostic("SLOT_CANCELLED", INFO,
+                                    "槽 #%s 的在途调用随%s作废（其迟到结果不再产生诊断）"
+                                    % (into, reason)))
+        if len(self._cancelled) > 4096:               # 序号单调，只留最近的一段
+            newest = max(self._cancelled)
+            self._cancelled = {seq for seq in self._cancelled if seq > newest - 2048}
 
     def _put_slot(self, into: str, status: str, value, seq: int) -> None:
         self.slots[into] = {"status": status, "value": value, "seq": seq}
@@ -799,6 +882,9 @@ class Engine:
             state["done"] = True
             with self.lock:
                 current = self.slots.get(into) or {}
+                if seq in self._cancelled:
+                    # 已在生命周期边界（装载 / 重启）那一步报过：不重复，更不许漂到别的步骤。
+                    return
                 if current.get("seq") != seq:
                     self.queue([Diagnostic("SLOT_STALE_DROPPED", INFO,
                                            "槽 #%s 丢弃陈旧结果" % into)])
@@ -848,6 +934,26 @@ class Engine:
             timer.cancel()
 
     # ------------------------------------------------------------ 观察
+
+    def render_state(self) -> dict:
+        """**只读**的渲染状态快照：与 `observe()` 同一份数据，但**不取走**观察流。
+
+        为什么必须存在：渲染器每一帧都要读当前状态（值 / 状态标志 / 模板行 / 数据），
+        而观察流的**所有权在驱动者手里**（`observe()` 是"取走"语义）。渲染器若靠在渲染时
+        调 `observe()` 取状态，就会把驱动者的事件与诊断吃掉——那是标准的静默失败
+        （驱动者看不到事件，而界面上一切正常）。
+        """
+        with self.lock:
+            out = {
+                "nodes": ["#" + nid for nid in self.program.nodes],
+                "attrs": self._observe_attrs(),
+                "flags": self._observe_flags(),
+                "rows": self._observe_rows(),
+                "data": {"#" + key: value for key, value in self.items.items()},
+            }
+            if self.render_geometry:
+                out["geometry"] = self._observe_geometry()
+            return out
 
     def observe(self) -> dict:
         with self.lock:

@@ -29,6 +29,7 @@ def describe_rendering() -> dict:
         "snapshot": False,
         "interaction": False,
         "headless": True,
+        "pointer": "mouse",
         "notes": "参考语义引擎：无渲染器；几何、截图与用户动作投递均按规范可见降级。"
                  "conformance 可用 load.renderGeometry / load.rendering 注入测试替身。",
     }

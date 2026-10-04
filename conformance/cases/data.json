@@ -1,0 +1,71 @@
+[
+  {
+    "id": "d-batch-seeds-initial",
+    "title": "命令批新声明的数据源按声明初值播种，此后行集合由动作改变",
+    "spec": "01-grammar.md 第 7.6 节；03-semantics.md 第 5 节",
+    "program": [
+      "add #root window #win"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": [
+          "data #todos = [{text: \"a\"}, {text: \"b\"}] of {text: str}",
+          "add #win text #n text=str(count(#todos))"
+        ],
+        "expect": {
+          "data": { "#todos": [{ "text": "a" }, { "text": "b" }] },
+          "attrs": { "#n.text": "2" }
+        }
+      },
+      {
+        "send": ["append #todos item={text: \"c\"}"],
+        "expect": {
+          "attrs": { "#n.text": "3" },
+          "data": { "#todos": [{ "text": "a" }, { "text": "b" }, { "text": "c" }] }
+        }
+      }
+    ]
+  },
+  {
+    "id": "d-batch-empty-initial",
+    "title": "初值为空列表的数据源照常播种（播种 ≠ 有数据）",
+    "spec": "01-grammar.md 第 7.6 节",
+    "program": [
+      "add #root window #win"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": [
+          "data #todos = [] of {text: str = \"\"}",
+          "add #win list #items source=#todos template=#tpl",
+          "add #root template #tpl as t",
+          "add #tpl text #row text=t.text"
+        ],
+        "expect": {
+          "data": { "#todos": [] },
+          "rows": { "#items": [] }
+        }
+      }
+    ]
+  },
+  {
+    "id": "d-batch-persist-rebuild-visible",
+    "title": "命令批新增持久数据源：从声明初值重建，并且重建是可见的",
+    "spec": "01-grammar.md 第 7.6 节；03-semantics.md 第 5 节",
+    "program": [
+      "add #root window #win"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["data #log persist=true = [{v: 1}] of {v: int}"],
+        "expect": {
+          "data": { "#log": [{ "v": 1 }] },
+          "diagnostics": [{ "code": "STATE_REBUILT", "level": "info" }]
+        }
+      }
+    ]
+  }
+]
