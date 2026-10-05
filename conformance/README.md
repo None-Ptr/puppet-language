@@ -41,9 +41,12 @@ python conformance/runner.py --check
 ```bash
 python conformance/runner.py --impl "<启动实现的命令>"
 python conformance/runner.py --impl "..." --filter b-cycle
+python conformance/runner.py --impl-module <模块名>      # = python -m <模块名>
 ```
 
-驱动一个真实实现跑全部用例。
+驱动一个真实实现跑全部用例。`--impl` 给**完整命令**（适合带参数的启动方式）；
+`--impl-module` 给**模块名**，运行器自己拼 `python -m <模块名>`（下游以
+`--impl-module puppethub.protocol` 自证，见 puppethub 仓的 `verify-ci`）。
 
 运行器在每步之后会轮询 `observe`，直到该步的期望满足或达到等待上限（默认 3 秒）。因此像"槽超时"这类异步用例**不需要**额外的同步手段。
 

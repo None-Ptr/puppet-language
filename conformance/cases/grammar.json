@@ -244,5 +244,131 @@
         "expect": { "attrs": { "#t.text": "blurred" } }
       }
     ]
+  },
+  {
+    "id": "g-upsert-create",
+    "title": "upsert 不存在则新建；重复 upsert 幂等且零诊断",
+    "spec": "01-grammar.md 第 7.3 节",
+    "program": [
+      "add #root window #win"
+    ],
+    "loadExpect": { "nodes": ["#win"] },
+    "steps": [
+      {
+        "send": ["upsert #win col #main"],
+        "expect": { "noDiagnostics": true, "nodes": ["#main"] }
+      },
+      {
+        "send": ["upsert #win col #main text=\"再来一次\""],
+        "expect": {
+          "noDiagnostics": true,
+          "attrs": { "#main.text": "再来一次" },
+          "note": "第二个 upsert 命中已存在地址：更新属性，而不是报 ID_DUP"
+        }
+      }
+    ]
+  },
+  {
+    "id": "g-upsert-update",
+    "title": "upsert 命中已存在地址：更新给定属性，未提及的属性保留",
+    "spec": "01-grammar.md 第 7.3 节",
+    "program": [
+      "add #root window #win",
+      "add #win text #t text=\"旧的\" fg=\"#ff0000\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["upsert #win text #t fg=\"#00ff00\""],
+        "expect": {
+          "noDiagnostics": true,
+          "attrs": { "#t.fg": "#00ff00", "#t.text": "旧的" },
+          "note": "text 未被提及：保持原样"
+        }
+      }
+    ]
+  },
+  {
+    "id": "g-upsert-binding",
+    "title": "upsert 命中已绑定的属性：解除绑定并写入，必须产生 BIND_OVERRIDDEN",
+    "spec": "01-grammar.md 第 7.3 节；06-diagnostics.md 第 4.4 节",
+    "program": [
+      "add #root window #win",
+      "add #win text #t text=#res.status",
+      "data #res = [] of {value: str = \"默认\"}"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["upsert #win text #t text=\"字面\""],
+        "expect": {
+          "diagnostics": [{ "code": "BIND_OVERRIDDEN", "level": "info" }],
+          "attrs": { "#t.text": "字面" }
+        }
+      },
+      {
+        "send": ["set #t text=\"再改\""],
+        "expect": {
+          "noDiagnostics": true,
+          "attrs": { "#t.text": "再改" },
+          "note": "绑定已被 upsert 解除：随后的 set 不再报 BIND_OVERRIDDEN"
+        }
+      }
+    ]
+  },
+  {
+    "id": "g-upsert-keeps-binding",
+    "title": "upsert 只动给定属性：未提及的绑定原样保留",
+    "spec": "01-grammar.md 第 7.3 节",
+    "program": [
+      "add #root window #win",
+      "add #win text #t text=#res.status fg=\"#ff0000\"",
+      "data #res = [] of {value: str = \"默认\"}"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["upsert #win text #t fg=\"#00ff00\""],
+        "expect": {
+          "noDiagnostics": true,
+          "attrs": { "#t.fg": "#00ff00" },
+          "note": "text 未被提及：它的绑定不应被解除"
+        }
+      },
+      {
+        "send": ["set #t text=\"改字面\""],
+        "expect": {
+          "diagnostics": [{ "code": "BIND_OVERRIDDEN", "level": "info" }],
+          "note": "text 的绑定还在——证明 upsert 没碰它"
+        }
+      }
+    ]
+  },
+  {
+    "id": "g-upsert-keeps-shape",
+    "title": "upsert 只更新属性：声明的类型 / 父与现状不同 → 警告且不生效",
+    "spec": "01-grammar.md 第 7.3 节；06-diagnostics.md 第 4.4 节（UPSERT_KEPT）",
+    "program": [
+      "add #root window #win",
+      "add #win col #t"
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "send": ["upsert #root col #t"],
+        "expect": {
+          "diagnostics": [{ "code": "UPSERT_KEPT", "level": "warning" }],
+          "nodes": ["#root", "#win", "#t"],
+          "note": "#t 仍在 #win 之下：不搬家（搬家请用 move）"
+        }
+      },
+      {
+        "send": ["upsert #win row #t"],
+        "expect": {
+          "diagnostics": [{ "code": "UPSERT_KEPT", "level": "warning" }],
+          "note": "类型保持 col：改类型请 del+add"
+        }
+      }
+    ]
   }
 ]

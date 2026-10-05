@@ -441,5 +441,48 @@
     "requires": [
       "interaction"
     ]
+  },
+  {
+    "id": "i-fire-target-missing",
+    "title": "fire 打到不存在的目标是错误（静默无效必须被说出来）",
+    "spec": "06-diagnostics.md 第 3 节与第 4.1 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"走\"",
+      "add #win text #t text=\"未发生\"",
+      "on #b click: set #t text=\"hit\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "fire": { "target": "#ghost", "event": "click" },
+        "expect": {
+          "diagnostics": [{ "code": "TARGET_MISSING", "level": "error" }],
+          "attrs": { "#t.text": "未发生" },
+          "note": "没有任何效果：诊断必须说出来，而不是让驱动者以为成功了"
+        }
+      }
+    ]
+  },
+  {
+    "id": "i-fire-unknown-event",
+    "title": "fire 的事件名未识别是警告（与 listen 同一条规矩）",
+    "spec": "06-diagnostics.md 第 4.2 节",
+    "program": [
+      "add #root window #win",
+      "add #win button #b text=\"走\"",
+      "add #win text #t text=\"未发生\"",
+      "on #b click: set #t text=\"hit\""
+    ],
+    "loadExpect": { "noDiagnostics": true },
+    "steps": [
+      {
+        "fire": { "target": "#b", "event": "clik" },
+        "expect": {
+          "diagnostics": [{ "code": "UNKNOWN_EVENT", "level": "warning" }],
+          "attrs": { "#t.text": "未发生" }
+        }
+      }
+    ]
   }
 ]

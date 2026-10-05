@@ -72,5 +72,22 @@
     "steps": [
       { "expect": { "nodes": ["#root", "#win", "#box", "#lst"] } }
     ]
+  },
+  {
+    "id": "rf-ref-with-field",
+    "title": "引用类属性带字段（值引用）→ REF_KIND：它成不了数据源",
+    "spec": "06-diagnostics.md 第 4.1 节（REF_KIND）；04-vocabulary.md 第 3 节（source / options 是地址）",
+    "program": [
+      "add #root window #win",
+      "data #msgs = [] of {label: str}",
+      "add #win dropdown #d options=#msgs.text"
+    ],
+    "loadExpect": {
+      "diagnostics": [{ "code": "REF_KIND", "level": "error" }],
+      "note": "带字段的引用是**值引用**，指向某个属性的值——程序能装载，但该属性永不生效"
+    },
+    "steps": [
+      { "expect": { "nodes": ["#root", "#win", "#d"] } }
+    ]
   }
 ]

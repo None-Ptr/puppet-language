@@ -368,7 +368,19 @@ class Engine:
         target = target.lstrip("#")          # 接受 "#id" 与 "id" 两种写法
         with self.lock:
             diags: List[Diagnostic] = []
-            if event in vocab.INTERACTION_EVENTS and self.flag(target, "disabled"):
+            # **没有静默**（06 第 3 节）：`fire` 也是"一步"。目标不存在 = **完全无效**——
+            # 命令没有任何效果，而写它的驱动者会以为成功了（分档通则：无效 → 错误；
+            # 同族的 `interact` 早已这么报）。事件名未识别 → 警告（与 `listen` 同一条规矩）。
+            # 两条都报，不因第一条漏第二条；有诊断就不发布、不派发——没有可安放之处。
+            if target not in self.program.nodes:
+                diags.append(Diagnostic("TARGET_MISSING", ERROR,
+                                        "目标 #%s 不存在" % target))
+            if event not in vocab.INTERACTION_EVENTS:
+                diags.append(Diagnostic("UNKNOWN_EVENT", WARNING,
+                                        "未知事件 %s" % event))
+            if diags:
+                return diags
+            if self.flag(target, "disabled"):
                 return diags                      # 引擎层拦截（禁用节点不响应）
             # 载荷：`change` 与 `submit` 都携带新值（04 词汇表：input 显式绑定 change
             # **或 submit**——提交时读控件的值是正当写法，载荷不带给绑定就取不到）。

@@ -209,7 +209,15 @@ class TkRenderer:
                 widget.event_generate("<Button-1>", x=x, y=y)
                 widget.event_generate("<ButtonRelease-1>", x=x, y=y)
             elif action == "submit":
-                widget.event_generate("<Return>")
+                # submit 的载荷 = **部件当前文本**（`<Return>` 绑定取现值；用户先打字后回车）。
+                # 先把 value 写进部件，再走**绑定走的同一条** `_fire`：实测
+                # `event_generate("<Return>")` 在未聚焦的部件上**不触发**绑定脚本，
+                # 而移动端回车时焦点不在输入框恰是常态——合成按键这条路不可靠。
+                if value is not None and hasattr(widget, "delete"):
+                    widget.delete(0, "end")
+                    if value != "":
+                        widget.insert(0, str(value))
+                self._fire(nid, "submit", self._entry_text(widget))
             elif action == "change":
                 var = self.vars.get(nid)
                 if var is not None:                      # 勾选类：需要时翻转并触发 command

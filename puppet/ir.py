@@ -178,10 +178,17 @@ def _apply_add(program: Program, stmt: Add, diags: List[Diagnostic]) -> List[str
         diags.append(Diagnostic("PARENT_MISSING", ERROR,
                                 "父 %s 不存在" % _hash(stmt.parent), line=line))
         return []
-    if stmt.self_id in program.nodes or stmt.self_id in program.data:
+    if stmt.self_id in program.data:
+        # 数据源地址不归 `add` / `upsert` 管：那是 `data` 的地盘。
         diags.append(Diagnostic("ID_DUP", ERROR,
                                 "地址 %s 已被占用" % _hash(stmt.self_id), line=line))
         return []
+    if stmt.self_id in program.nodes:
+        if not stmt.is_upsert:
+            diags.append(Diagnostic("ID_DUP", ERROR,
+                                    "地址 %s 已被占用" % _hash(stmt.self_id), line=line))
+            return []
+        return _apply_upsert(program, stmt, diags)
     if stmt.anchor is not None:
         anchor = program.nodes.get(stmt.anchor[1])
         if anchor is None or anchor.parent != parent.id:
@@ -198,6 +205,38 @@ def _apply_add(program: Program, stmt: Add, diags: List[Diagnostic]) -> List[str
     program.nodes[stmt.self_id] = node
     if stmt.self_id not in parent.children:
         _insert(program, parent, stmt.self_id, stmt.anchor)
+    return []
+
+
+def _apply_upsert(program: Program, stmt: Add, diags: List[Diagnostic]) -> List[str]:
+    """`upsert` 的"存在"分支：**只更新给定属性**（规范 01 第 7.3 节）。
+
+    未提及的属性与其绑定**原样保留**；命中的绑定被覆盖时给 `BIND_OVERRIDDEN`
+    （与 `set` 同款——规范 06 第 4.4 节把 `upsert` 与 `set` 并列写进这条码）。
+    类型 / 父 / 锚**不是**"给定属性"：改属性是 `upsert` 的事，改类型用 `del`+`add`、
+    搬家用 `move`——声明与现状不一致时**可见**（`UPSERT_KEPT`），不静默吞掉。
+    """
+    node = program.nodes[stmt.self_id]
+    line = stmt.line
+    if stmt.type != node.type:
+        diags.append(Diagnostic("UPSERT_KEPT", WARNING,
+                                "upsert 只更新属性：#%s 保持 %s（声明的是 %s）"
+                                % (node.id, node.type, stmt.type), line=line))
+    if stmt.parent != node.parent:
+        diags.append(Diagnostic("UPSERT_KEPT", WARNING,
+                                "upsert 只更新属性：#%s 仍在 %s 之下（声明的是 %s）"
+                                % (node.id, _hash(node.parent), _hash(stmt.parent)),
+                                line=line))
+    if stmt.anchor is not None:
+        diags.append(Diagnostic("UPSERT_KEPT", WARNING,
+                                "upsert 只更新属性：锚点 %s 被忽略（要调整位置请用 move）"
+                                % _hash(stmt.anchor[1]), line=line))
+    for key, expr in stmt.attrs.items():
+        old = node.attrs.get(key)
+        if old is not None and not is_static(old):
+            diags.append(Diagnostic("BIND_OVERRIDDEN", INFO,
+                                    "属性 %s 的绑定已被覆盖" % key, line=line))
+        node.attrs[key] = expr
     return []
 
 
@@ -281,9 +320,19 @@ def validate(program: Program, assets_root: Optional[str] = None) -> List[Diagno
                     diags.append(Diagnostic("REF_ATTR_EXPR", ERROR,
                                             "引用类属性 %s 不能写表达式" % name,
                                             line=node.line))
-                elif isinstance(expr, Ref) and expr.field is None:
-                    used_templates.add(expr.addr)
-                    diags += _check_ref_target(program, name, expr.addr, node.line)
+                elif isinstance(expr, Ref):
+                    if expr.field is None:
+                        used_templates.add(expr.addr)
+                        diags += _check_ref_target(program, name, expr.addr, node.line)
+                    else:
+                        # 引用类属性要的是**地址**（数据源 / 模板，见 04 第 3 节）；
+                        # 带字段的引用是**值引用**——指向"某个属性的值"，永远成不了
+                        # 数据源。不报就是"引用断裂的静默无效"（程序能装载，但该属性
+                        # 永不生效，且一声不响）。
+                        diags.append(Diagnostic("REF_KIND", ERROR,
+                                                "%s 必须指向地址，不能带字段（%s.%s）"
+                                                % (name, _hash(expr.addr), expr.field),
+                                                line=node.line))
             if name == "icon" and isinstance(expr, Lit) and isinstance(expr.value, str):
                 if expr.value not in vocab.CORE_ICONS:
                     guess = vocab.suggest_from(expr.value, vocab.CORE_ICONS)
